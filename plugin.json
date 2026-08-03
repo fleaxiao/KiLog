@@ -10,7 +10,7 @@
   "actions": [
     {
       "identifier": "open-recorder",
-      "name": "Open KiLog Recorder",
+      "name": "KiLog",
       "description": "Open the start, note, undo and end control panel for the active PCB.",
       "show-button": true,
       "scopes": ["pcb"],

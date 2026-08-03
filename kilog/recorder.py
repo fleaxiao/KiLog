@@ -80,8 +80,7 @@ class Recorder:
         log_path = output / f"{pcb_stem}_log.json"
         if log_path.exists():
             raise LogFileExistsError(
-                f"{log_path.name} already exists in the PCB directory. "
-                "Choose another log name, or move, rename, or delete the existing file."
+                f"{log_path.name} already exists in the PCB directory."
             )
         self.note_counter = next_counter(output, pcb_stem, ".kicad_pcb")
         baseline = self.adapter.snapshot()
@@ -91,8 +90,7 @@ class Recorder:
             write_json_new(log_path, self._log_document(baseline))
         except FileExistsError as exc:
             raise LogFileExistsError(
-                f"{log_path.name} already exists in the PCB directory. "
-                "Choose another log name, or move, rename, or delete the existing file."
+                f"{log_path.name} already exists in the PCB directory."
             ) from exc
         self.log_path = log_path
         self.baseline = baseline

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from kilog.storage import next_counter, normalize_stem, numbered_path, write_json_atomic
+from kilog.storage import (
+    next_counter,
+    normalize_stem,
+    numbered_path,
+    write_json_atomic,
+    write_json_new,
+)
 
 
 def test_filename_normalization_and_counter(tmp_path):
@@ -10,7 +18,7 @@ def test_filename_normalization_and_counter(tmp_path):
     assert normalize_stem("记录.json", ".json") == "记录"
     (tmp_path / "log_000003.json").write_text("{}", encoding="utf-8")
     assert next_counter(tmp_path, "log", ".json") == 4
-    assert numbered_path(tmp_path, "log", 4, ".json").name == "log_000004.json"
+    assert numbered_path(tmp_path, "ref", 4, ".kicad_pcb").name == "ref_04.kicad_pcb"
 
 
 @pytest.mark.parametrize("name", ["", "../log", "a/b", "CON", "bad:name"])
@@ -24,3 +32,11 @@ def test_atomic_json_leaves_no_temporary_file(tmp_path):
     write_json_atomic(path, {"ok": True})
     assert path.read_text(encoding="utf-8").strip() == '{\n  "ok": true\n}'
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_new_json_refuses_to_overwrite(tmp_path):
+    path = tmp_path / "log.json"
+    write_json_new(path, {"events": []})
+    with pytest.raises(FileExistsError):
+        write_json_new(path, {"events": [1]})
+    assert json.loads(path.read_text(encoding="utf-8"))["events"] == []

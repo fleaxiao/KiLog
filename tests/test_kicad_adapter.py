@@ -18,6 +18,17 @@ class FakeBoard:
         return self.items
 
 
+class ProjectSpecifier:
+    def __init__(self, path, name=""):
+        self.path = path
+        self.name = name
+
+
+class BoardDocument:
+    def __init__(self, project_path, project_name=""):
+        self.project = ProjectSpecifier(project_path, project_name)
+
+
 def with_id(value, item_uuid):
     value.proto.id.value = item_uuid
     return value
@@ -44,3 +55,30 @@ def test_snapshot_uses_one_api_request_and_classifies_common_items():
         "zone-1": "zone",
     }
     assert adapter.output_directory.as_posix().lower().endswith("/project")
+
+
+def test_relative_board_filename_uses_current_kicad_project_directory(tmp_path):
+    board = FakeBoard([])
+    board.name = "demo.kicad_pcb"
+    board.document = BoardDocument(str(tmp_path))
+    adapter = KiCadBoardAdapter(object(), board)
+
+    assert adapter.output_directory == tmp_path.resolve()
+
+
+def test_empty_board_filename_uses_project_path_returned_by_kicad(tmp_path):
+    board = FakeBoard([])
+    board.name = ""
+    board.document = BoardDocument(str(tmp_path))
+    adapter = KiCadBoardAdapter(object(), board)
+
+    assert adapter.output_directory == tmp_path.resolve()
+
+
+def test_board_path_is_reconstructed_from_kicad_project_data(tmp_path):
+    board = FakeBoard([])
+    board.name = ""
+    board.document = BoardDocument(str(tmp_path), "controller")
+    adapter = KiCadBoardAdapter(object(), board)
+
+    assert adapter.board_path == (tmp_path / "controller.kicad_pcb").resolve()

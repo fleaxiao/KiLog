@@ -1,58 +1,56 @@
 # KiLog
 
-KiLog 是面向 KiCad 9/10 PCB Editor 的 IPC 扩展。它直接轮询编辑器内存中的 `BOARD` 对象，因此器件移动/旋转、走线、过孔、铺铜等操作尚未保存到原始 `.kicad_pcb` 文件时，也能被记录。
+KiLog is a KiCad 9/10 PCB Editor plugin that records live, unsaved board changes through the IPC API.
 
-## UI 与行为
+## Usage
 
-- `start`：锁定两个文件名前缀并开始监听。默认 PCB 快照名为 `ref`，日志名为 `log`。
-- `note`：先写入待处理变化，再通过 KiCad 的 Save Copy API 保存 `ref_000001.kicad_pcb`；不会改变当前编辑文档的文件名。
-- `undo`：优先执行一次 KiCad 原生撤销，并删除相应的 `log_XXXXXX.json`。若原生撤销后的对象状态与该日志事件起点不一致，则从内存对象快照精确恢复。
-- `end`：立即写入最后一批变化并结束监听。
+The UI has one file-prefix field. With the default prefix `ref`, KiLog writes files next to the open PCB:
 
-输出目录是当前 PCB 文件所在目录。每个日志事件、每个字段变化和每个 KiCad 对象分别包含 `event_uuid`、`change_uuid` 和 `item_uuid`。日志使用 JSON Patch 风格的 `add` / `remove` / `replace` 操作，并带有语义分类和前后状态指纹。
+- `ref_log.json` — accumulated changes
+- `ref_01.kicad_pcb`, `ref_02.kicad_pcb`, ... — reference snapshots
+
+If the log already exists, KiLog warns and does not overwrite it. Choose another prefix to start a new recording.
+
+- **Start** begins recording.
+- **Note** saves a numbered PCB snapshot.
+- **Undo** reverts the latest recorded change and updates the log.
+- **End** flushes pending changes and stops recording.
+
+## Log format
+
+The log contains the initial PCB path and recorded changes. Footprint placement, movement, and rotation are all stored as `footprint.move`. Only the latest position and final angle are retained.
+
+Footprints outside the live `Edge.Cuts` boundary are ignored. Moving a footprint into the board creates a `footprint.move` entry; moving it outside does not store its outside position.
 
 ```json
 {
-  "event_uuid": "…",
-  "sequence": 1,
-  "summary": {"operations": {"footprint.move": 2}},
+  "initial_pcb_path": "C:/project/board.kicad_pcb",
   "changes": [
     {
-      "change_uuid": "…",
-      "item_uuid": "…",
+      "change_uuid": "...",
+      "item_uuid": "...",
       "operation": "footprint.move",
-      "op": "replace",
-      "path": "/items/…/data/position/x",
-      "before": "10000000",
-      "after": "10500000"
+      "position": {"x_nm": "10000000", "y_nm": "20000000"},
+      "orientation": {"value_degrees": 270}
     }
   ]
 }
 ```
 
-## 开发模式安装
+## Installation
 
-KiLog 采用“项目目录即插件目录”的开发布局，不再生成或安装 PCM/ZIP 包。将整个仓库克隆或放置到：
+Place this repository in the KiCad plugin directory:
 
-- Windows：`%USERPROFILE%\Documents\KiCad\<版本>\plugins\KiLog`
-- macOS：`~/Documents/KiCad/<版本>/plugins/KiLog`
-- Linux：`~/.local/share/KiCad/<版本>/plugins/KiLog`
+- Windows: `%USERPROFILE%\Documents\KiCad\<version>\plugins\KiLog`
+- macOS: `~/Documents/KiCad/<version>/plugins/KiLog`
+- Linux: `~/.local/share/KiCad/<version>/plugins/KiLog`
 
-KiLog 只会显示在 PCB Editor 的插件列表和工具栏中，不会显示在 KiCad 项目管理器主界面。修改源码后关闭并重新打开 PCB Editor，或在 PCB Editor 中重新加载插件，即会使用当前工作区中的新版代码，无需再次安装。请在 PCB Editor 的 `Preferences > Plugins` 中启用 IPC API；首次加载会为插件建立 Python 环境并安装 `kicad-python`。
+Enable the IPC API under **PCB Editor > Preferences > Plugins**, then reload or restart PCB Editor.
 
-UI 使用 KiCad 自带的 wxPython，不依赖 `_tkinter`。
-
-## 设计说明
-
-正式图标以黄色折角日志文件为主体，把 PCB 走线和焊盘直接融入页面，颜色延续深绿 `#063D2C`、黄橙 `#F5A11A` 与奶白 `#F7F2E8`。ImageGen 母版位于 [kilog-logo-imagegen.png](design/generated/kilog-logo-imagegen.png)，正式 SVG 位于 [icon.svg](assets/icon.svg)，各尺寸 PNG 由 `tools/render_icons.py` 统一生成。
-
-## 开发与验证
+## Development
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\kicad-python-packager.exe validate .
 ```
-
-IPC API 当前是同步请求/响应接口，没有异步编辑事件，因此 KiLog 以 160 ms 周期读取对象，并在 450 ms 稳定窗口后把连续拖动合并为一次操作。路由器或其他交互工具返回 busy 时，记录器会等待工具完成。`undo` 只撤销当前 KiLog 会话内已经写入日志的操作。

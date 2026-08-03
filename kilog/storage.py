@@ -20,13 +20,13 @@ def normalize_stem(value: str, suffix: str) -> str:
         stem = stem[: -len(suffix)]
     stem = stem.strip().rstrip(". ")
     if not stem or stem in {".", ".."}:
-        raise ValueError("文件名不能为空")
+        raise ValueError("The filename cannot be empty.")
     if any(char in stem for char in '<>:"/\\|?*'):
-        raise ValueError("文件名不能包含路径或 Windows 保留字符")
+        raise ValueError("The filename cannot contain a path or reserved Windows characters.")
     if stem.upper() in _WINDOWS_RESERVED:
-        raise ValueError(f"{stem} 是系统保留文件名")
+        raise ValueError(f"{stem} is a reserved system filename.")
     if len(stem) > 120:
-        raise ValueError("文件名不能超过 120 个字符")
+        raise ValueError("The filename cannot exceed 120 characters.")
     return stem
 
 
@@ -42,7 +42,17 @@ def next_counter(directory: Path, stem: str, suffix: str) -> int:
 
 
 def numbered_path(directory: Path, stem: str, counter: int, suffix: str) -> Path:
-    return directory / f"{stem}_{counter:06d}{suffix}"
+    return directory / f"{stem}_{counter:02d}{suffix}"
+
+
+def write_json_new(path: Path, value: dict[str, Any]) -> None:
+    """Create a JSON file while refusing to replace an existing file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def write_json_atomic(path: Path, value: dict[str, Any]) -> None:

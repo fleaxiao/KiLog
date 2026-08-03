@@ -31,8 +31,9 @@ def main() -> int:
     except Exception as exc:
         app = wx.GetApp() or wx.App(False)
         wx.MessageBox(
-            f"{exc}\n\n请确认 PCB Editor 已打开，并在 Preferences > Plugins 中启用 IPC API。",
-            "KiLog 启动失败",
+            f"{exc}\n\nMake sure PCB Editor is open and the IPC API is enabled "
+            "under Preferences > Plugins.",
+            "KiLog startup failed",
             wx.OK | wx.ICON_ERROR,
         )
         return 1

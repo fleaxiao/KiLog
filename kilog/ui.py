@@ -4,17 +4,18 @@ from pathlib import Path
 
 import wx
 
-from .recorder import Recorder, RecorderConfig
+from .recorder import LogFileExistsError, Recorder, RecorderConfig
 
 
-BG = "#063D2C"
-PANEL = "#0A4A36"
-FIELD = "#052F23"
-ORANGE = "#F5A11A"
-CREAM = "#F7F2E8"
-MUTED = "#A8C6B8"
-DIM = "#6E9C87"
-RED = "#F26B5E"
+BG = "#14231E"
+PANEL = "#20352D"
+FIELD = "#0E1C17"
+ORANGE = "#F2A33A"
+CREAM = "#F3F0E8"
+MUTED = "#A9BCB4"
+DIM = "#72877E"
+RED = "#F07167"
+WINDOW_ALPHA = 242
 
 
 class KiLogWindow(wx.Frame):
@@ -25,19 +26,22 @@ class KiLogWindow(wx.Frame):
     def __init__(self, recorder: Recorder, asset_directory: Path):
         super().__init__(
             parent=None,
-            title="KiLog — PCB operation recorder",
+            title="KiLog",
             style=wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX),
         )
         self.recorder = recorder
         self.asset_directory = asset_directory
         self.SetBackgroundColour(BG)
         self.SetIcon(self._load_icon())
+        self.SetDoubleBuffered(True)
 
         self._build()
         self._set_controls(False)
         self.Fit()
         self.SetMinSize(self.GetSize())
         self.Centre(wx.BOTH)
+        if self.CanSetTransparent():
+            self.SetTransparent(WINDOW_ALPHA)
 
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_poll, self.timer)
@@ -62,84 +66,69 @@ class KiLogWindow(wx.Frame):
         outer = wx.BoxSizer(wx.VERTICAL)
 
         header = wx.BoxSizer(wx.HORIZONTAL)
-        icon_path = self.asset_directory / "icon-ui-64.png"
-        if icon_path.exists():
-            bitmap = wx.Bitmap(str(icon_path), wx.BITMAP_TYPE_PNG)
-            header.Add(wx.StaticBitmap(root, bitmap=bitmap), 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 12)
-        titles = wx.BoxSizer(wx.VERTICAL)
         title = wx.StaticText(root, label="KiLog")
         title.SetForegroundColour(CREAM)
-        title.SetFont(self._font(20, bold=True))
-        subtitle = wx.StaticText(root, label="LIVE PCB CHANGE JOURNAL")
-        subtitle.SetForegroundColour(ORANGE)
-        subtitle.SetFont(self._font(8, mono=True))
-        titles.Add(title, 0, wx.BOTTOM, 2)
-        titles.Add(subtitle)
-        header.Add(titles, 0, wx.ALIGN_CENTER_VERTICAL)
-        outer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 22)
-
-        form = wx.Panel(root)
-        form.SetBackgroundColour(PANEL)
-        form_sizer = wx.FlexGridSizer(rows=2, cols=2, vgap=6, hgap=14)
-        pcb_label = wx.StaticText(form, label="目标 PCB 文件名")
-        log_label = wx.StaticText(form, label="目标 Log 文件名")
-        for label in (pcb_label, log_label):
-            label.SetForegroundColour(MUTED)
-            label.SetFont(self._font(9))
-        self.pcb_entry = self._text_field(form, "ref")
-        self.log_entry = self._text_field(form, "log")
-        form_sizer.Add(pcb_label, 0, wx.EXPAND)
-        form_sizer.Add(log_label, 0, wx.EXPAND)
-        form_sizer.Add(self.pcb_entry, 1, wx.EXPAND)
-        form_sizer.Add(self.log_entry, 1, wx.EXPAND)
-        form_sizer.AddGrowableCol(0, 1)
-        form_sizer.AddGrowableCol(1, 1)
-        form.SetSizer(form_sizer)
-        outer.Add(form, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 22)
-
-        buttons = wx.BoxSizer(wx.HORIZONTAL)
-        self.start_button = self._button(root, "start", self._on_start, primary=True)
-        self.note_button = self._button(root, "note", self._on_note)
-        self.undo_button = self._button(root, "undo", self._on_undo)
-        self.end_button = self._button(root, "end", self._on_end)
-        for index, button in enumerate(
-            (self.start_button, self.note_button, self.undo_button, self.end_button)
-        ):
-            buttons.Add(button, 1, wx.LEFT if index else 0, 8)
-        outer.Add(buttons, 0, wx.EXPAND | wx.ALL, 22)
-
-        status_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.status_dot = wx.StaticText(root, label="●")
-        self.status_dot.SetForegroundColour(MUTED)
-        self.status_text = wx.StaticText(root, label="就绪 — 点击 start 开始记录", size=(350, -1))
-        self.status_text.SetForegroundColour(MUTED)
-        self.status_text.SetFont(self._font(9))
+        title.SetFont(self._font(13, bold=True))
         self.counter_text = wx.StaticText(root, label="0 changes")
         self.counter_text.SetForegroundColour(ORANGE)
         self.counter_text.SetFont(self._font(8, mono=True))
-        status_row.Add(self.status_dot, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 7)
-        status_row.Add(self.status_text, 1, wx.ALIGN_CENTER_VERTICAL)
-        status_row.Add(self.counter_text, 0, wx.ALIGN_CENTER_VERTICAL)
-        outer.Add(status_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 22)
+        header.Add(title, 1, wx.ALIGN_CENTER_VERTICAL)
+        header.Add(self.counter_text, 0, wx.ALIGN_CENTER_VERTICAL)
+        outer.Add(header, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
 
-        output = wx.StaticText(root, label=f"输出目录  {self.recorder.adapter.output_directory}")
+        form_sizer = wx.FlexGridSizer(rows=1, cols=2, vgap=6, hgap=10)
+        pcb_label = wx.StaticText(root, label="File prefix")
+        pcb_label.SetForegroundColour(MUTED)
+        pcb_label.SetFont(self._font(8))
+        self.pcb_entry = self._text_field(root, "ref")
+        form_sizer.Add(pcb_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        form_sizer.Add(self.pcb_entry, 1, wx.EXPAND)
+        form_sizer.AddGrowableCol(1, 1)
+        outer.Add(form_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
+
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.start_button = self._button(root, "Start", self._on_start, primary=True)
+        self.note_button = self._button(root, "Note", self._on_note)
+        self.undo_button = self._button(root, "Undo", self._on_undo)
+        self.end_button = self._button(root, "End", self._on_end)
+        for index, button in enumerate(
+            (self.start_button, self.note_button, self.undo_button, self.end_button)
+        ):
+            buttons.Add(button, 1, wx.LEFT if index else 0, 6)
+        outer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
+
+        status_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.status_text = wx.StaticText(root, label="Ready — click Start to record", size=(286, -1))
+        self.status_text.SetForegroundColour(MUTED)
+        self.status_text.SetFont(self._font(8))
+        status_row.Add(self.status_text, 1, wx.ALIGN_CENTER_VERTICAL)
+        outer.Add(status_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
+
+        output_directory = str(self.recorder.adapter.output_directory)
+        output = wx.StaticText(
+            root,
+            label=output_directory,
+            size=(360, -1),
+            style=wx.ST_ELLIPSIZE_MIDDLE,
+        )
         output.SetForegroundColour(DIM)
-        output.SetFont(self._font(8, mono=True))
-        outer.Add(output, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 22)
+        output.SetFont(self._font(7, mono=True))
+        output.SetToolTip(f"Output directory: {output_directory}")
+        outer.Add(output, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 14)
         root.SetSizer(outer)
 
-    def _text_field(self, parent: wx.Window, value: str) -> wx.TextCtrl:
-        field = wx.TextCtrl(parent, value=value, size=(220, 30), style=wx.BORDER_SIMPLE)
-        field.SetBackgroundColour(FIELD)
-        field.SetForegroundColour(CREAM)
-        field.SetFont(self._font(10, mono=True))
+    def _text_field(self, parent: wx.Window, value: str, subdued: bool = False) -> wx.TextCtrl:
+        field = wx.TextCtrl(parent, value=value, size=(280, 25), style=wx.BORDER_SIMPLE)
+        field.SetBackgroundColour(BG if subdued else FIELD)
+        field.SetForegroundColour(DIM if subdued else CREAM)
+        field.SetFont(self._font(7 if subdued else 8, mono=True))
         return field
 
     def _button(self, parent: wx.Window, label: str, handler, primary: bool = False) -> wx.Button:
-        button = wx.Button(parent, label=label, size=(104, 38), style=wx.BORDER_NONE)
+        button = wx.Button(parent, label=label, size=(-1, 29), style=wx.BORDER_NONE)
         button.SetBackgroundColour(ORANGE if primary else PANEL)
         button.SetForegroundColour(BG if primary else CREAM)
-        button.SetFont(self._font(10, bold=True))
+        button.SetFont(self._font(8, bold=True))
         button.Bind(wx.EVT_BUTTON, handler)
         return button
 
@@ -149,17 +138,19 @@ class KiLogWindow(wx.Frame):
         self.undo_button.Enable(running)
         self.end_button.Enable(running)
         self.pcb_entry.Enable(not running)
-        self.log_entry.Enable(not running)
 
     def _status(self, text: str, colour: str = MUTED) -> None:
         self.status_text.SetLabel(text)
-        self.status_dot.SetForegroundColour(colour)
+        self.status_text.SetForegroundColour(colour)
         self.counter_text.SetLabel(f"{self.recorder.event_count} changes")
         self.Layout()
 
     def _run_action(self, action) -> None:
         try:
             action()
+        except LogFileExistsError as exc:
+            self._status("Recording not started — log file already exists", ORANGE)
+            wx.MessageBox(str(exc), "Existing log file", wx.OK | wx.ICON_WARNING, self)
         except Exception as exc:
             self._status(str(exc), RED)
             wx.MessageBox(str(exc), "KiLog", wx.OK | wx.ICON_ERROR, self)
@@ -169,26 +160,25 @@ class KiLogWindow(wx.Frame):
             self.recorder.start(
                 RecorderConfig(
                     pcb_stem=self.pcb_entry.GetValue(),
-                    log_stem=self.log_entry.GetValue(),
                 )
             )
             self._set_controls(True)
-            self._status("记录中 — 监听未保存 PCB 内存状态", ORANGE)
+            self._status("Recording live PCB changes", ORANGE)
 
         self._run_action(action)
 
     def _on_note(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
             path = self.recorder.note()
-            self._status(f"已保存快照 {path.name}", ORANGE)
+            self._status(f"Saved reference {path.name}", ORANGE)
 
         self._run_action(action)
 
     def _on_undo(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
             path, strategy = self.recorder.undo()
-            label = "KiCad 原生撤销" if strategy == "native" else "对象快照恢复"
-            self._status(f"已撤销并删除 {path.name} · {label}", ORANGE)
+            label = "native KiCad undo" if strategy == "native" else "snapshot restore"
+            self._status(f"Undone · {label} · updated {path.name}", ORANGE)
 
         self._run_action(action)
 
@@ -196,8 +186,8 @@ class KiLogWindow(wx.Frame):
         def action() -> None:
             event = self.recorder.end()
             self._set_controls(False)
-            suffix = "，最后变化已写入" if event else ""
-            self._status(f"记录已结束{suffix}", MUTED)
+            suffix = " · final change saved" if event else ""
+            self._status(f"Recording ended{suffix}", MUTED)
 
         self._run_action(action)
 
@@ -206,13 +196,14 @@ class KiLogWindow(wx.Frame):
             if self.recorder.recording:
                 event = self.recorder.poll()
                 if event:
-                    self._status(f"已写入 log #{event['sequence']:06d}", ORANGE)
+                    log_name = self.recorder.log_path.name if self.recorder.log_path else "log"
+                    self._status(f"Saved event #{event['sequence']:02d} to {log_name}", ORANGE)
         except Exception as exc:
             lowered = str(exc).lower()
             if "busy" in lowered or "timeout" in lowered:
-                self._status("等待 KiCad 完成交互操作…", ORANGE)
+                self._status("Waiting for KiCad to finish the active tool…", ORANGE)
             else:
-                self._status(f"监听暂时失败：{exc}", RED)
+                self._status(f"Temporary recording error: {exc}", RED)
 
     def _on_close(self, event: wx.CloseEvent) -> None:
         self.timer.Stop()
@@ -221,7 +212,7 @@ class KiLogWindow(wx.Frame):
                 self.recorder.end()
             except Exception as exc:
                 result = wx.MessageBox(
-                    f"最后变化写入失败：{exc}\n仍要关闭吗？",
+                    f"The final change could not be saved: {exc}\nClose anyway?",
                     "KiLog",
                     wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
                     self,

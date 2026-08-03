@@ -61,13 +61,60 @@ class KiCadBoardAdapter:
 
     @property
     def output_directory(self) -> Path:
+        board_path = self.board_path
+        if board_path is not None:
+            return board_path.parent
+        project_directory = self._project_directory()
+        return project_directory or Path.cwd()
+
+    @property
+    def board_path(self) -> Path | None:
+        """Best available absolute path of the PCB open in the editor."""
         name = (self.board.name or "").strip()
-        if not name:
-            return Path.cwd()
-        board_path = Path(name).expanduser()
-        if not board_path.is_absolute():
-            board_path = Path.cwd() / board_path
-        return board_path.resolve().parent
+        project_directory = self._project_directory()
+
+        if name:
+            board_path = Path(name).expanduser()
+            if board_path.is_absolute():
+                return board_path.resolve()
+            if project_directory is not None:
+                return (project_directory / board_path).resolve()
+
+        # KiCad 10 may clear board_filename when it populates project.path in
+        # DocumentSpecifier because both currently share a protobuf oneof.
+        if project_directory is not None:
+            try:
+                project_name = (self.board.document.project.name or "").strip()
+            except (AttributeError, ValueError):
+                project_name = ""
+            if project_name:
+                return (project_directory / f"{project_name}.kicad_pcb").resolve()
+        return None
+
+    def _project_directory(self) -> Path | None:
+        """Return KiCad's directory for the board when its filename is relative."""
+        try:
+            project_path = (self.board.document.project.path or "").strip()
+        except (AttributeError, ValueError):
+            project_path = ""
+
+        if project_path:
+            directory = Path(project_path).expanduser()
+            if directory.is_absolute():
+                return directory.resolve()
+
+        try:
+            project = self.board.get_project()
+            expanded = project.expand_text_variables("${KIPRJMOD}").strip()
+        except Exception:
+            return None
+
+        # KiCad leaves an unknown variable untouched.  Do not mistake that for
+        # a real relative directory and accidentally resolve it below the plugin.
+        if not expanded or expanded == "${KIPRJMOD}":
+            return None
+        directory = Path(expanded).expanduser()
+        return directory.resolve() if directory.is_absolute() else None
 
     @staticmethod
     def _kind(item) -> str:
@@ -110,7 +157,7 @@ class KiCadBoardAdapter:
             except Exception as exc:  # KiCad may report AS_BUSY during an interactive tool.
                 last_error = exc
                 time.sleep(0.08)
-        raise RecorderError(f"无法读取撤销后的 PCB 状态：{last_error}") from last_error
+        raise RecorderError(f"Could not read the PCB state after Undo: {last_error}") from last_error
 
     def undo_to(self, target: BoardSnapshot) -> tuple[BoardSnapshot, str]:
         """Use KiCad's undo stack first, then exactly restore from memory if needed."""
@@ -151,5 +198,5 @@ class KiCadBoardAdapter:
 
         restored = self._snapshot_with_retry()
         if restored.fingerprint != target.fingerprint:
-            raise RecorderError("对象快照恢复后仍与目标状态不一致")
+            raise RecorderError("The restored object snapshot still differs from the target state.")
         return restored

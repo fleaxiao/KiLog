@@ -16,6 +16,7 @@ def snapshot(*items: ItemState) -> BoardSnapshot:
 class FakeAdapter:
     def __init__(self, directory: Path, snapshots: list[BoardSnapshot]):
         self.output_directory = directory
+        self.board_path = directory / "demo.kicad_pcb"
         self.snapshots = list(snapshots)
         self.current = self.snapshots[0]
         self.saved: list[Path] = []

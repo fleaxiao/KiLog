@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kilog.local/schemas/operation-log-v1.json",
+  "title": "KiLog PCB operation event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_uuid",
+    "session_uuid",
+    "sequence",
+    "timestamp",
+    "base_fingerprint",
+    "result_fingerprint",
+    "summary",
+    "changes"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "event_uuid": {"type": "string", "format": "uuid"},
+    "session_uuid": {"type": "string", "format": "uuid"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "source": {"type": "object"},
+    "base_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "result_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "summary": {
+      "type": "object",
+      "required": ["change_count", "item_count", "operations"]
+    },
+    "changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "change_uuid",
+          "item_uuid",
+          "item_kind",
+          "operation",
+          "op",
+          "path"
+        ],
+        "properties": {
+          "change_uuid": {"type": "string", "format": "uuid"},
+          "item_uuid": {"type": "string", "minLength": 1},
+          "item_kind": {"type": "string", "minLength": 1},
+          "operation": {"type": "string", "minLength": 1},
+          "op": {"enum": ["add", "remove", "replace"]},
+          "path": {"type": "string", "pattern": "^/items/"}
+        }
+      }
+    }
+  }
+}

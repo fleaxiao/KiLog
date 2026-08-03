@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" style="color:#F5A11A">
+  <title>Pad Ledger</title>
+  <g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round">
+    <path d="M25 18v60h54"/>
+    <path d="M25 35h28v18h25"/>
+  </g>
+  <g fill="#063D2C" stroke="currentColor" stroke-width="3">
+    <circle cx="25" cy="18" r="5"/><circle cx="25" cy="35" r="5"/>
+    <circle cx="25" cy="53" r="5"/><circle cx="25" cy="78" r="5"/>
+    <circle cx="53" cy="35" r="5"/><circle cx="53" cy="53" r="5"/>
+    <circle cx="78" cy="53" r="5"/><circle cx="79" cy="78" r="5"/>
+  </g>
+</svg>

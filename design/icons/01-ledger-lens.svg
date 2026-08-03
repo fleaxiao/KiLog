@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" style="color:#F5A11A">
+  <title>Ledger Lens</title>
+  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 15h42l16 16v25"/>
+    <path d="M62 15v17h16"/>
+    <circle cx="52" cy="57" r="20"/>
+    <path d="M67 72l17 17"/>
+  </g>
+</svg>

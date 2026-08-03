@@ -1,0 +1,20 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2",
+  "name": "KiLog PCB Operation Recorder",
+  "description": "Record live unsaved PCB edits as UUID-addressed JSON diffs.",
+  "description_full": "KiLog records footprint moves and rotations, routing, vias, zones and other PCB edits directly from the live KiCad editor model. It also creates named board snapshots and keeps its JSON history synchronized with undo.",
+  "identifier": "com-kilog-recorder",
+  "type": "plugin",
+  "author": {"name": "KiLog contributors", "contact": {}},
+  "maintainer": {"name": "KiLog contributors", "contact": {}},
+  "license": "MIT",
+  "resources": {},
+  "versions": [
+    {
+      "version": "1.0.1",
+      "status": "stable",
+      "kicad_version": "9.0",
+      "runtime": "ipc"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" style="color:#F5A11A">
+  <title>KiLog Mark</title>
+  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 13h43l16 16v27"/>
+    <path d="M61 13v17h16"/>
+    <path d="M31 31h17M31 43h22"/>
+    <circle cx="53" cy="62" r="20"/>
+    <path d="M68 77l17 17"/>
+    <path d="M40 66V55h12l8 8"/>
+  </g>
+  <g fill="#063D2C" stroke="currentColor" stroke-width="3">
+    <circle cx="40" cy="66" r="4"/><circle cx="52" cy="55" r="4"/><circle cx="60" cy="63" r="4"/>
+  </g>
+</svg>

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://go.kicad.org/api/schemas/v1",
+  "identifier": "com.kilog.recorder",
+  "name": "KiLog PCB Operation Recorder",
+  "description": "Record live, unsaved PCB edits as UUID-addressed JSON diffs with snapshots and synchronized undo.",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.10"
+  },
+  "actions": [
+    {
+      "identifier": "open-recorder",
+      "name": "Open KiLog Recorder",
+      "description": "Open the start, note, undo and end control panel for the active PCB.",
+      "show-button": true,
+      "scopes": ["pcb"],
+      "entrypoint": "kilog_action.py",
+      "icons-light": [
+        "assets/icon-toolbar-light-24.png",
+        "assets/icon-toolbar-light-48.png"
+      ],
+      "icons-dark": [
+        "assets/icon-toolbar-dark-24.png",
+        "assets/icon-toolbar-dark-48.png"
+      ]
+    }
+  ]
+}

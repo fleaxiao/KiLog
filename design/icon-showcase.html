@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>KiLog — Logo Design Exploration</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#f7f5ef;color:#14261e;font-family:Inter,"Segoe UI",sans-serif}
+    main{max-width:1120px;margin:auto;padding:72px 28px 96px} header{text-align:center;margin-bottom:54px}
+    h1{font-size:56px;font-weight:300;letter-spacing:.08em;margin:0 0 10px} header p{font:12px Consolas,monospace;letter-spacing:.18em;color:#527363}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}.card{background:white;border:1px solid #e2e6e1;border-radius:18px;overflow:hidden;transition:.25s}
+    .card:hover{transform:translateY(-5px);box-shadow:0 18px 40px #0b3d2c1c}.canvas{height:250px;background:#063d2c;display:grid;place-items:center}
+    object{width:132px;height:132px}.copy{padding:22px}.copy h2{font-size:16px;letter-spacing:.08em;margin:0 0 6px}.copy h3{font:10px Consolas,monospace;color:#d88a0e;margin:0 0 14px}.copy p{font-size:13px;line-height:1.65;color:#577064;margin:0}
+    .selected{outline:3px solid #f5a11a}.badge{position:absolute;background:#f5a11a;color:#063d2c;padding:6px 10px;border-radius:99px;font:bold 10px Consolas,monospace;margin:12px}
+    .relative{position:relative}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body><main>
+  <header><h1>KiLog</h1><p>PCB CHANGE JOURNAL · SIX DIRECTIONS</p></header>
+  <section class="grid">
+    <article class="card"><div class="canvas"><object data="icons/01-ledger-lens.svg"></object></div><div class="copy"><h2>Ledger Lens</h2><h3>PURE GEOMETRIC</h3><p>日志页与检查镜的最简合成，留白充分，但 PCB 身份较弱。</p></div></article>
+    <article class="card"><div class="canvas"><object data="icons/02-pad-ledger.svg"></object></div><div class="copy"><h2>Pad Ledger</h2><h3>DOT MATRIX</h3><p>焊盘阵列形成 L 与时间路径，硬件感明确，文档含义更抽象。</p></div></article>
+    <article class="card"><div class="canvas"><object data="icons/03-trace-lines.svg"></object></div><div class="copy"><h2>Trace Lines</h2><h3>LINE SYSTEM</h3><p>日志行被放大镜捕获，缩小时节奏清楚，电路节点表现较少。</p></div></article>
+    <article class="card"><div class="canvas"><object data="icons/04-event-board.svg"></object></div><div class="copy"><h2>Event Board</h2><h3>DOTS + GEOMETRY</h3><p>圆形 PCB 检查镜内是一条带节点的操作轨迹，贴近参考图气质。</p></div></article>
+    <article class="card selected relative"><span class="badge">SELECTED</span><div class="canvas"><object data="icons/05-kilog-mark.svg"></object></div><div class="copy"><h2>KiLog Mark</h2><h3>LINES + GEOMETRY</h3><p>折角日志页、PCB 节点走线与放大镜同时成立；24 px 下仍能识别核心轮廓。</p></div></article>
+    <article class="card"><div class="canvas"><object data="icons/06-change-chain.svg"></object></div><div class="copy"><h2>Change Chain</h2><h3>NODE NETWORK</h3><p>连续事件 UUID 进入日志页，强调可追溯性，视觉更偏数据工作流。</p></div></article>
+  </section>
+</main></body></html>

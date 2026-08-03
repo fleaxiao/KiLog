@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Make the repository root the live KiCad plugin directory for restart-to-update development.
+- Remove PCM metadata, ZIP artifacts, and package build tooling.
+
 ## 1.0.1 — 2026-08-03
 
 - Replace Tkinter with the wxPython runtime bundled with KiCad 10.

@@ -30,21 +30,21 @@ KiLog 是面向 KiCad 9/10 PCB Editor 的 IPC 扩展。它直接轮询编辑器�
 }
 ```
 
-## 安装
+## 开发模式安装
 
-首选方式是在 KiCad 的 Plugin and Content Manager 中从文件安装 [kilog-pcm-1.0.1.zip](dist/kilog-pcm-1.0.1.zip)。手动安装时，解压 [kilog-plugin-1.0.1.zip](dist/kilog-plugin-1.0.1.zip)，把其中的 `kilog` 文件夹放到：
+KiLog 采用“项目目录即插件目录”的开发布局，不再生成或安装 PCM/ZIP 包。将整个仓库克隆或放置到：
 
-- Windows：`%USERPROFILE%\Documents\KiCad\<版本>\plugins\kilog`
-- macOS：`~/Documents/KiCad/<版本>/plugins/kilog`
-- Linux：`~/.local/share/KiCad/<版本>/plugins/kilog`
+- Windows：`%USERPROFILE%\Documents\KiCad\<版本>\plugins\KiLog`
+- macOS：`~/Documents/KiCad/<版本>/plugins/KiLog`
+- Linux：`~/.local/share/KiCad/<版本>/plugins/KiLog`
 
-在 KiCad 的 `Preferences > Plugins` 中启用 IPC API，重新加载插件。首次加载会为插件建立 Python 环境并安装 `kicad-python`。随后从 PCB Editor 工具栏点击 KiLog 图标。
+KiLog 只会显示在 PCB Editor 的插件列表和工具栏中，不会显示在 KiCad 项目管理器主界面。修改源码后关闭并重新打开 PCB Editor，或在 PCB Editor 中重新加载插件，即会使用当前工作区中的新版代码，无需再次安装。请在 PCB Editor 的 `Preferences > Plugins` 中启用 IPC API；首次加载会为插件建立 Python 环境并安装 `kicad-python`。
 
 UI 使用 KiCad 自带的 wxPython，不依赖 `_tkinter`。
 
 ## 设计说明
 
-正式图标以黄色折角日志文件为主体，把 PCB 走线和焊盘直接融入页面，颜色延续深绿 `#063D2C`、黄橙 `#F5A11A` 与奶白 `#F7F2E8`。ImageGen 母版位于 [kilog-logo-imagegen.png](design/generated/kilog-logo-imagegen.png)，正式 SVG 位于 [icon.svg](plugin/assets/icon.svg)，各尺寸 PNG 由 `tools/render_icons.py` 统一生成。
+正式图标以黄色折角日志文件为主体，把 PCB 走线和焊盘直接融入页面，颜色延续深绿 `#063D2C`、黄橙 `#F5A11A` 与奶白 `#F7F2E8`。ImageGen 母版位于 [kilog-logo-imagegen.png](design/generated/kilog-logo-imagegen.png)，正式 SVG 位于 [icon.svg](assets/icon.svg)，各尺寸 PNG 由 `tools/render_icons.py` 统一生成。
 
 ## 开发与验证
 
@@ -52,9 +52,7 @@ UI 使用 KiCad 自带的 wxPython，不依赖 `_tkinter`。
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\kicad-python-packager.exe validate plugin
-.\.venv\Scripts\python.exe tools\build_package.py
-.\.venv\Scripts\kicad-python-packager.exe validate dist\kilog-pcm-1.0.1.zip
+.\.venv\Scripts\kicad-python-packager.exe validate .
 ```
 
 IPC API 当前是同步请求/响应接口，没有异步编辑事件，因此 KiLog 以 160 ms 周期读取对象，并在 450 ms 稳定窗口后把连续拖动合并为一次操作。路由器或其他交互工具返回 busy 时，记录器会等待工具完成。`undo` 只撤销当前 KiLog 会话内已经写入日志的操作。

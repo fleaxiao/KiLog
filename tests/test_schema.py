@@ -15,7 +15,6 @@ def test_generated_event_matches_bundled_schema():
     event = build_event(before, after, 1, "11111111-1111-4111-8111-111111111111")
     schema_path = (
         Path(__file__).resolve().parents[1]
-        / "plugin"
         / "kilog"
         / "schemas"
         / "operation-log-v1.schema.json"

@@ -6,8 +6,7 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Generated build workspace
-build/
+# Python packaging artifacts
 *.egg-info/
 
 # Editor and operating-system files

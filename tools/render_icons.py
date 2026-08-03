@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "plugin" / "assets"
+ASSETS = ROOT / "assets"
 SOURCE = ROOT / "design" / "generated" / "kilog-logo-imagegen.png"
 OUTPUTS = {
     "icon-ui-64.png": 64,

@@ -81,11 +81,13 @@ class KiLogWindow(wx.Frame):
         self.asset_directory = asset_directory
         self._pcb_window = PcbEditorWindow()
         self._position_poll_tick = 0
+        self._pcb_hotkeys_registered = False
         self.SetBackgroundColour(BG)
         self.SetIcon(self._load_icon())
         self.SetDoubleBuffered(True)
 
         self._build()
+        self._configure_shortcuts()
         self._set_controls(False)
         self.Fit()
         self.SetMinSize(self.GetSize())
@@ -201,6 +203,64 @@ class KiLogWindow(wx.Frame):
         button.Bind(wx.EVT_BUTTON, handler)
         return button
 
+    def _configure_shortcuts(self) -> None:
+        self._note_hotkey_id = int(wx.NewIdRef())
+        self._undo_hotkey_id = int(wx.NewIdRef())
+        self.SetAcceleratorTable(
+            wx.AcceleratorTable(
+                [
+                    (wx.ACCEL_CTRL, ord("D"), self.note_button.GetId()),
+                    (wx.ACCEL_CTRL, ord("Z"), self.undo_button.GetId()),
+                ]
+            )
+        )
+        self.Bind(wx.EVT_MENU, self._on_note_shortcut, id=self.note_button.GetId())
+        self.Bind(wx.EVT_MENU, self._on_undo_shortcut, id=self.undo_button.GetId())
+        self.Bind(wx.EVT_HOTKEY, self._on_note_shortcut, id=self._note_hotkey_id)
+        self.Bind(wx.EVT_HOTKEY, self._on_undo_shortcut, id=self._undo_hotkey_id)
+        self.note_button.SetToolTip("Note (Ctrl+D)")
+        self.undo_button.SetToolTip("Undo (Ctrl+Z)")
+
+    def _sync_pcb_hotkeys(self) -> None:
+        should_register = self.recorder.recording and self._pcb_window.is_foreground()
+        if should_register == self._pcb_hotkeys_registered:
+            return
+        if should_register:
+            note_registered = self.RegisterHotKey(
+                self._note_hotkey_id,
+                wx.MOD_CONTROL,
+                ord("D"),
+            )
+            undo_registered = self.RegisterHotKey(
+                self._undo_hotkey_id,
+                wx.MOD_CONTROL,
+                ord("Z"),
+            )
+            if note_registered and undo_registered:
+                self._pcb_hotkeys_registered = True
+                return
+            if note_registered:
+                self.UnregisterHotKey(self._note_hotkey_id)
+            if undo_registered:
+                self.UnregisterHotKey(self._undo_hotkey_id)
+            return
+        self._unregister_pcb_hotkeys()
+
+    def _unregister_pcb_hotkeys(self) -> None:
+        if not self._pcb_hotkeys_registered:
+            return
+        self.UnregisterHotKey(self._note_hotkey_id)
+        self.UnregisterHotKey(self._undo_hotkey_id)
+        self._pcb_hotkeys_registered = False
+
+    def _on_note_shortcut(self, event: wx.CommandEvent) -> None:
+        if self.note_button.IsEnabled():
+            self._on_note(event)
+
+    def _on_undo_shortcut(self, event: wx.CommandEvent) -> None:
+        if self.undo_button.IsEnabled():
+            self._on_undo(event)
+
     def _set_controls(self, running: bool) -> None:
         self.start_button.Enable(not running)
         self.note_button.Enable(running)
@@ -209,6 +269,8 @@ class KiLogWindow(wx.Frame):
         self.pcb_entry.SetEditable(not running)
         if running:
             self.pcb_entry.ClearSelection()
+        else:
+            self._unregister_pcb_hotkeys()
 
     def _status(self, text: str, colour: str = MUTED) -> None:
         self.status_text.SetLabel(text)
@@ -264,6 +326,7 @@ class KiLogWindow(wx.Frame):
         self._run_action(action)
 
     def _on_poll(self, _event: wx.TimerEvent) -> None:
+        self._sync_pcb_hotkeys()
         self._position_poll_tick += 1
         if self._position_poll_tick >= self.POSITION_POLL_TICKS:
             self._position_poll_tick = 0
@@ -309,6 +372,7 @@ class KiLogWindow(wx.Frame):
 
     def _on_close(self, event: wx.CloseEvent) -> None:
         self.timer.Stop()
+        self._unregister_pcb_hotkeys()
         if self.recorder.recording:
             try:
                 self.recorder.end()

@@ -97,6 +97,26 @@ class PcbEditorWindow:
             self._hwnd = hwnd
         return bool(hwnd and user32.SetForegroundWindow(hwnd))
 
+    def is_foreground(self) -> bool:
+        """Return whether the PCB Editor is the current foreground window."""
+        if sys.platform != "win32":
+            return False
+
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        user32.IsWindow.argtypes = [wintypes.HWND]
+        user32.IsWindow.restype = wintypes.BOOL
+        user32.GetForegroundWindow.argtypes = []
+        user32.GetForegroundWindow.restype = wintypes.HWND
+
+        hwnd = self._hwnd
+        if not hwnd or not user32.IsWindow(hwnd):
+            hwnd = self._find_window()
+            self._hwnd = hwnd
+        return bool(hwnd and user32.GetForegroundWindow() == hwnd)
+
     @staticmethod
     def _find_canvas_bounds(hwnd: int, client_bounds: WindowRect) -> WindowRect | None:
         """Find the deepest large child window, which is KiCad's PCB canvas."""

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon-256.png" alt="KiLog icon" width="128" />
+</p>
+
 # KiLog
 
 KiLog is a KiCad 9/10 PCB Editor plugin that records live, unsaved board changes through the IPC API.

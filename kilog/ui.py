@@ -4,6 +4,7 @@ from pathlib import Path
 
 import wx
 
+from .path_display import default_log_name, trailing_directories
 from .recorder import LogFileExistsError, Recorder, RecorderConfig
 from .window_position import PcbEditorWindow, WindowRect, bottom_left_position
 
@@ -123,22 +124,37 @@ class KiLogWindow(wx.Frame):
         root.SetBackgroundColour(BG)
         outer = wx.BoxSizer(wx.VERTICAL)
 
-        form_sizer = wx.FlexGridSizer(rows=1, cols=2, vgap=6, hgap=10)
-        pcb_label = wx.TextCtrl(
+        output_path = Path(self.recorder.adapter.output_directory)
+        output_directory = str(output_path)
+
+        details_row = wx.BoxSizer(wx.HORIZONTAL)
+        path_label = wx.StaticText(root, label="Path:")
+        path_label.SetForegroundColour(MUTED)
+        path_label.SetFont(self._font(9))
+        output = wx.StaticText(
             root,
-            value="Log name",
-            size=(62, 16),
-            style=wx.BORDER_NONE | wx.TE_READONLY | wx.TE_LEFT,
+            label=trailing_directories(output_path, count=2),
+            size=(115, -1),
+            style=wx.ST_ELLIPSIZE_START,
         )
-        pcb_label.SetBackgroundColour(BG)
-        pcb_label.SetForegroundColour(MUTED)
-        pcb_label.SetFont(self._font(9))
-        pcb_label.SetMargins(0, 0)
-        self.pcb_entry = self._text_field(root, "ref")
-        form_sizer.Add(pcb_label, 0, wx.ALIGN_BOTTOM | wx.BOTTOM, 2)
-        form_sizer.Add(self.pcb_entry, 1, wx.EXPAND)
-        form_sizer.AddGrowableCol(1, 1)
-        outer.Add(form_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        output.SetForegroundColour(DIM)
+        output.SetFont(self._font(8, mono=True))
+        output.SetToolTip(f"Output directory: {output_directory}")
+        log_label = wx.StaticText(root, label="Log:")
+        log_label.SetForegroundColour(MUTED)
+        log_label.SetFont(self._font(9))
+        board_path = getattr(self.recorder.adapter, "board_path", None)
+        self.pcb_entry = self._text_field(
+            root,
+            default_log_name(board_path),
+            size=(70, 18),
+        )
+
+        details_row.Add(path_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        details_row.Add(output, 1, wx.ALIGN_CENTER_VERTICAL)
+        details_row.Add(log_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 8)
+        details_row.Add(self.pcb_entry, 0, wx.ALIGN_CENTER_VERTICAL)
+        outer.Add(details_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         self.start_button = self._button(root, "Start", self._on_start, primary=True)
@@ -155,27 +171,13 @@ class KiLogWindow(wx.Frame):
         self.status_text = wx.StaticText(root, label="Ready — click Start to record", size=(225, -1))
         self.status_text.SetForegroundColour(MUTED)
         self.status_text.SetFont(self._font(9))
-        status_row.Add(self.status_text, 1, wx.ALIGN_CENTER_VERTICAL)
-        outer.Add(status_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
-
-        output_path = Path(self.recorder.adapter.output_directory)
-        output_directory = str(output_path)
-        output_label = output_path.name or output_directory
-        footer = wx.BoxSizer(wx.HORIZONTAL)
-        output = wx.StaticText(
-            root,
-            label=output_label,
-        )
-        output.SetForegroundColour(DIM)
-        output.SetFont(self._font(8, mono=True))
-        output.SetToolTip(f"Output directory: {output_directory}")
         self.counter_text = wx.StaticText(root, label="0 changes")
         self.counter_text.SetForegroundColour(ORANGE)
         self.counter_text.SetFont(self._font(8, mono=True))
-        footer.Add(output, 1, wx.ALIGN_CENTER_VERTICAL)
-        footer.Add(self.counter_text, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
+        status_row.Add(self.status_text, 1, wx.ALIGN_CENTER_VERTICAL)
+        status_row.Add(self.counter_text, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
         outer.Add(
-            footer,
+            status_row,
             0,
             wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM,
             10,
@@ -187,8 +189,9 @@ class KiLogWindow(wx.Frame):
         parent: wx.Window,
         value: str,
         subdued: bool = False,
+        size: tuple[int, int] = (150, 18),
     ) -> UnderlinedTextField:
-        field = UnderlinedTextField(parent, value=value, size=(150, 18))
+        field = UnderlinedTextField(parent, value=value, size=size)
         field.editor.SetBackgroundColour(BG)
         field.editor.SetForegroundColour(DIM if subdued else CREAM)
         field.editor.SetFont(self._font(8 if subdued else 9, mono=True))

@@ -1,9 +1,33 @@
 from __future__ import annotations
 
+import ctypes
 from pathlib import Path
 import sys
 
-import wx
+
+def _enable_high_dpi() -> None:
+    """Prevent Windows from bitmap-scaling the wx client area."""
+    if sys.platform != "win32":
+        return
+    try:
+        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.  This must run before
+        # importing wx or creating any HWND; non-client areas are already
+        # rendered at native DPI by Windows, which otherwise makes only the
+        # plugin client text look blurred.
+        if ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4)):
+            return
+    except (AttributeError, OSError):
+        pass
+    try:
+        # Windows 8.1 fallback: PROCESS_PER_MONITOR_DPI_AWARE.
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        pass
+
+
+_enable_high_dpi()
+
+import wx  # noqa: E402  (DPI awareness must be configured first.)
 
 
 PLUGIN_DIR = Path(__file__).resolve().parent

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from kipy.board_types import FootprintInstance, Track, Via, Zone
+from kipy.geometry import Vector2
 
 from kilog.kicad_adapter import KiCadBoardAdapter
 
@@ -11,11 +12,15 @@ class FakeBoard:
     def __init__(self, items):
         self.items = items
         self.calls = 0
+        self.reverted = False
 
     def get_items(self, types):
         self.calls += 1
         assert len(types) == 9
         return self.items
+
+    def revert(self):
+        self.reverted = True
 
 
 class ProjectSpecifier:
@@ -82,3 +87,37 @@ def test_board_path_is_reconstructed_from_kicad_project_data(tmp_path):
     adapter = KiCadBoardAdapter(object(), board)
 
     assert adapter.board_path == (tmp_path / "controller.kicad_pcb").resolve()
+
+
+def test_replay_footprint_transform_moves_anchor_and_child_fields():
+    footprint = FootprintInstance()
+    footprint.position = Vector2.from_xy(1_000_000, 2_000_000)
+    # Exercise the same clone path used by live snapshots and apply_change.
+    footprint = KiCadBoardAdapter._clone_item(footprint)
+    old_reference = footprint.reference_field.text.position
+
+    KiCadBoardAdapter._apply_footprint_transform(
+        footprint,
+        {
+            "position": {"x_nm": "6000000", "y_nm": "9000000"},
+            "orientation": {"value_degrees": 90},
+        },
+    )
+
+    assert (footprint.position.x, footprint.position.y) == (6_000_000, 9_000_000)
+    assert footprint.orientation.degrees == 90
+    # This is the behavior direct ParseDict misses: kipy moves footprint children too.
+    assert footprint.reference_field.text.position != old_reference
+
+
+def test_prepare_replay_reverts_matching_board_to_saved_state(tmp_path, monkeypatch):
+    board_path = tmp_path / "demo.kicad_pcb"
+    board = FakeBoard([])
+    board.name = str(board_path)
+    adapter = KiCadBoardAdapter(object(), board)
+    monkeypatch.setattr(adapter, "REVERT_SETTLE_SECONDS", 0)
+
+    baseline = adapter.prepare_replay(str(board_path))
+
+    assert board.reverted
+    assert baseline.board_name == str(board_path)

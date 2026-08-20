@@ -24,6 +24,8 @@ def bottom_left_position(
     y = bounds.bottom - height - margin_y
     if width <= bounds.right - bounds.left:
         x = min(x, bounds.right - width)
+    else:
+        x = bounds.left
     return max(bounds.left, x), max(bounds.top, y)
 
 

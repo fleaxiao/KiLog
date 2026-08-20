@@ -20,6 +20,23 @@ If the log already exists, KiLog warns and does not overwrite it. Choose another
 - **Undo** reverts the latest recorded change and updates the log.
 - **End** flushes pending changes and stops recording.
 
+## Replay
+
+Click **Load JSON** and choose a KiLog log file. KiLog immediately restores the PCB
+referenced by `initial_pcb_path` to its last saved on-disk state and applies each
+UUID-addressed operation directly in PCB Editor. Unsaved PCB edits are discarded by
+this reset, so save any work that is unrelated to the replay first.
+
+- **Play / Pause** controls automatic fixed-step playback.
+- **Back / Next** moves one operation; **-10 / +10** jumps ten operations.
+- Drag the progress bar to seek to any operation.
+- Choose `0.25×` through `4×` playback speed.
+
+Seeking backward resets the PCB to the saved initial state captured when the log was loaded, then
+replays up to the requested operation. For reliable results, open the PCB named by
+`initial_pcb_path` before loading its log. Playback changes are committed to KiCad's
+undo stack and are not saved to disk automatically.
+
 ## Log format
 
 The log contains the initial PCB path and recorded changes. Footprint placement, movement, and rotation are all stored as `footprint.move`. Only the latest position and final angle are retained.

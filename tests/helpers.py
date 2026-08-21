@@ -27,6 +27,9 @@ class FakeAdapter:
             self.current = self.snapshots.pop(0)
         return self.current
 
+    def prepare_recording(self) -> BoardSnapshot:
+        return self.snapshot()
+
     def save_copy(self, path: Path) -> None:
         self.saved.append(path)
         path.write_text("(kicad_pcb)", encoding="utf-8")
@@ -34,3 +37,7 @@ class FakeAdapter:
     def undo_to(self, target: BoardSnapshot):
         self.current = target
         return target, self.undo_strategy
+
+    def restore_snapshot(self, target: BoardSnapshot, description=""):
+        self.current = target
+        return target

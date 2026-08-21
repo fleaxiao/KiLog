@@ -45,6 +45,13 @@ def numbered_path(directory: Path, stem: str, counter: int, suffix: str) -> Path
     return directory / f"{stem}_{counter:02d}{suffix}"
 
 
+def snapshot_path(directory: Path, stem: str, position: int) -> Path:
+    """Return the PCB snapshot name for an exact position in the recorded log."""
+    if position < 0:
+        raise ValueError("The recorded position cannot be negative.")
+    return numbered_path(directory, stem, position, ".kicad_pcb")
+
+
 def write_json_new(path: Path, value: dict[str, Any]) -> None:
     """Create a JSON file while refusing to replace an existing file."""
     path.parent.mkdir(parents=True, exist_ok=True)

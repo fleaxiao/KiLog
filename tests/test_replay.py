@@ -17,6 +17,7 @@ class ReplayAdapter:
         self.restores = 0
         self.restore_descriptions: list[str] = []
         self.prepared_path = None
+        self.saved = []
 
     def prepare_replay(self, initial_pcb_path):
         self.prepared_path = initial_pcb_path
@@ -48,6 +49,10 @@ class ReplayAdapter:
         )
         return self.current
 
+    def save_copy(self, path):
+        self.saved.append(path)
+        path.write_text("(kicad_pcb)", encoding="utf-8")
+
 
 def write_log(path, count=3):
     path.write_text(
@@ -70,6 +75,28 @@ def write_log(path, count=3):
     )
 
 
+def write_grouped_log(path):
+    path.write_text(
+        json.dumps(
+            {
+                "initial_pcb_path": "C:/project/demo.kicad_pcb",
+                "changes": [
+                    {
+                        "change_uuid": f"change-{index}",
+                        "item_uuid": "fp-1",
+                        "operation": "footprint.move",
+                        "position": {"x_nm": str(index)},
+                        "orientation": {"value_degrees": 0},
+                        "record_step": 1 if index <= 2 else 2,
+                    }
+                    for index in range(1, 5)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_load_validates_log_shape(tmp_path):
     path = tmp_path / "bad.json"
     path.write_text('{"changes": []}', encoding="utf-8")
@@ -83,6 +110,23 @@ def test_default_playback_interval_is_point_four_seconds():
 
     assert replay.step_seconds == 0.4
     assert replay.speed == 1.0
+
+
+def test_replay_groups_multiple_changes_by_record_step(tmp_path):
+    path = tmp_path / "grouped.json"
+    write_grouped_log(path)
+    adapter = ReplayAdapter()
+    replay = ReplayController(adapter)
+
+    log = replay.load(path)
+    assert len(log.changes) == 4
+    assert replay.total == 2
+
+    replay.step_forward()
+
+    assert replay.position == 1
+    assert adapter.apply_calls == 2
+    assert adapter.applied == ["change-1", "change-2"]
 
 
 def test_step_play_pause_and_completion(tmp_path):
@@ -156,6 +200,31 @@ def test_skip_is_clamped_to_log_bounds(tmp_path):
     assert adapter.apply_calls == 3
     assert adapter.restores == 1
     assert adapter.restore_descriptions == ["KiLog: replay back to step 0"]
+
+
+def test_replay_note_name_uses_current_recorded_position(tmp_path):
+    path = tmp_path / "ref.json"
+    write_log(path, 4)
+    adapter = ReplayAdapter()
+    replay = ReplayController(adapter)
+    replay.load(path)
+    replay.seek(3)
+
+    note_path = replay.note()
+
+    assert note_path == tmp_path / "ref_03.kicad_pcb"
+    assert adapter.saved == [note_path]
+
+
+def test_replay_note_does_not_overwrite_same_position(tmp_path):
+    path = tmp_path / "ref_log.json"
+    write_log(path, 1)
+    replay = ReplayController(ReplayAdapter())
+    replay.load(path)
+    replay.note()
+
+    with pytest.raises(ReplayError, match="position 0 is already marked"):
+        replay.note()
 
 
 def test_load_rejects_board_that_is_already_at_every_logged_target(tmp_path):

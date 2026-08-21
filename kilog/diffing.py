@@ -68,7 +68,7 @@ def _pairs(points: list[tuple[float, float]], closed: bool = False):
     return list(zip(points, points[1:]))
 
 
-def _edge_segments(snapshot: BoardSnapshot) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+def edge_segments(snapshot: BoardSnapshot) -> list[tuple[tuple[float, float], tuple[float, float]]]:
     segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
     for item in snapshot.items.values():
         if item.kind != "shape" or item.data.get("layer") != "BL_Edge_Cuts":
@@ -303,8 +303,8 @@ def build_event(
     session_uuid: str,
 ) -> dict[str, Any] | None:
     changes: list[dict[str, Any]] = []
-    before_edges = _edge_segments(before)
-    after_edges = _edge_segments(after)
+    before_edges = edge_segments(before)
+    after_edges = edge_segments(after)
 
     for item_uuid in sorted(set(before.items) | set(after.items)):
         pointer = f"/items/{_pointer_token(item_uuid)}"

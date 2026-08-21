@@ -8,6 +8,7 @@ from kilog.storage import (
     next_counter,
     normalize_stem,
     numbered_path,
+    snapshot_path,
     write_json_atomic,
     write_json_new,
 )
@@ -19,6 +20,7 @@ def test_filename_normalization_and_counter(tmp_path):
     (tmp_path / "log_000003.json").write_text("{}", encoding="utf-8")
     assert next_counter(tmp_path, "log", ".json") == 4
     assert numbered_path(tmp_path, "ref", 4, ".kicad_pcb").name == "ref_04.kicad_pcb"
+    assert snapshot_path(tmp_path, "ref", 12).name == "ref_12.kicad_pcb"
 
 
 @pytest.mark.parametrize("name", ["", "../log", "a/b", "CON", "bad:name"])

@@ -12,6 +12,7 @@ from kipy.board_types import (
     BoardShape,
     BoardText,
     BoardTextBox,
+    BoardLayer,
     Dimension,
     FootprintInstance,
     Track,
@@ -19,11 +20,13 @@ from kipy.board_types import (
     Zone,
 )
 from kipy.kicad import KiCad
-from kipy.geometry import Angle, Vector2
+from kipy.geometry import Angle, PolygonWithHoles, PolyLine, PolyLineNode, Vector2
 from kipy.proto.common.commands.editor_commands_pb2 import RAS_OK
 from kipy.proto.common import types as common_types
 from kipy.proto.common.types import KiCadObjectType
 
+from .board_outline import ordered_board_loops
+from .diffing import edge_segments
 from .model import BoardSnapshot, ItemState
 from .recorder import RecorderError
 from .replay import ReplayError
@@ -174,6 +177,83 @@ class KiCadBoardAdapter:
     def save_copy(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.board.save_as(str(path), overwrite=False, include_project=False)
+
+    def prepare_recording(self) -> BoardSnapshot:
+        """Restore the PCB file on disk before capturing the recording baseline."""
+        board_path = self.board_path
+        if board_path is None:
+            raise RecorderError("Save the PCB file before starting a recording.")
+        try:
+            self.board.revert()
+        except Exception as exc:
+            raise RecorderError(
+                f"Could not restore the initial PCB state from {board_path.name}: {exc}"
+            ) from exc
+        time.sleep(self.REVERT_SETTLE_SECONDS)
+        return self._snapshot_with_retry()
+
+    @staticmethod
+    def _zone_outline(loops: list[list[tuple[float, float]]]) -> PolygonWithHoles:
+        polygon = PolygonWithHoles()
+        outer = PolyLine()
+        for x, y in loops[0]:
+            outer.append(PolyLineNode.from_xy(round(x), round(y)))
+        polygon.outline = outer
+        for loop in loops[1:]:
+            hole = PolyLine()
+            for x, y in loop:
+                hole.append(PolyLineNode.from_xy(round(x), round(y)))
+            polygon.add_hole(hole)
+        return polygon
+
+    def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int:
+        """Create one full-board copper zone on each requested layer."""
+        requested_net = net_name.strip()
+        if not requested_net:
+            raise RecorderError("Enter a network name for the copper fill.")
+        if not layer_names:
+            raise RecorderError("Select at least one copper layer.")
+
+        nets = list(self.board.get_nets())
+        net = next((value for value in nets if value.name == requested_net), None)
+        if net is None:
+            net = next(
+                (value for value in nets if value.name.casefold() == requested_net.casefold()),
+                None,
+            )
+        if net is None:
+            raise RecorderError(f"Network {requested_net!r} does not exist on this board.")
+
+        layer_map = {
+            "F.Cu": BoardLayer.BL_F_Cu,
+            "B.Cu": BoardLayer.BL_B_Cu,
+        }
+        try:
+            layers = [layer_map[name] for name in layer_names]
+        except KeyError as exc:
+            raise RecorderError(f"Unsupported copper layer: {exc.args[0]}") from exc
+
+        loops = ordered_board_loops(edge_segments(self.snapshot()))
+        if not loops:
+            raise RecorderError("Edge.Cuts does not contain a closed board outline.")
+
+        zones = []
+        for layer in layers:
+            zone = Zone()
+            zone.net = net
+            zone.layers = [layer]
+            zone.outline = self._zone_outline(loops)
+            zones.append(zone)
+
+        commit = self.board.begin_commit()
+        try:
+            self.board.create_items(zones)
+            self.board.push_commit(commit, f"KiLog: fill board with {net.name}")
+        except Exception:
+            self.board.drop_commit(commit)
+            raise
+        self.board.refill_zones()
+        return len(zones)
 
     def prepare_replay(self, initial_pcb_path: str) -> BoardSnapshot:
         """Reset the matching open board to its saved on-disk replay baseline."""

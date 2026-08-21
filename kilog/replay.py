@@ -7,6 +7,7 @@ import time
 from typing import Any, Protocol
 
 from .model import BoardSnapshot
+from .storage import snapshot_path
 
 
 class ReplayError(RuntimeError):
@@ -22,12 +23,15 @@ class ReplayAdapter(Protocol):
 
     def apply_change(self, change: dict[str, Any]) -> BoardSnapshot: ...
 
+    def save_copy(self, path: Path) -> None: ...
+
 
 @dataclass(frozen=True)
 class ReplayLog:
     path: Path
     initial_pcb_path: str
     changes: tuple[dict[str, Any], ...]
+    steps: tuple[tuple[dict[str, Any], ...], ...]
 
 
 def load_replay_log(path: Path) -> ReplayLog:
@@ -51,8 +55,25 @@ def load_replay_log(path: Path) -> ReplayLog:
             raise ReplayError(f"Change #{index} has no item_uuid.")
         if not isinstance(change.get("operation"), str) or not change["operation"]:
             raise ReplayError(f"Change #{index} has no operation.")
+        record_step = change.get("record_step")
+        if record_step is not None and (not isinstance(record_step, int) or record_step < 1):
+            raise ReplayError(f"Change #{index} has an invalid record_step.")
         validated.append(dict(change))
-    return ReplayLog(path.resolve(), initial_path, tuple(validated))
+    steps: list[list[dict[str, Any]]] = []
+    previous_step: int | None = None
+    for change in validated:
+        record_step = change.get("record_step")
+        if isinstance(record_step, int) and steps and record_step == previous_step:
+            steps[-1].append(change)
+        else:
+            steps.append([change])
+        previous_step = record_step if isinstance(record_step, int) else None
+    return ReplayLog(
+        path.resolve(),
+        initial_path,
+        tuple(validated),
+        tuple(tuple(step) for step in steps),
+    )
 
 
 class ReplayController:
@@ -71,7 +92,7 @@ class ReplayController:
 
     @property
     def total(self) -> int:
-        return len(self.log.changes) if self.log else 0
+        return len(self.log.steps) if self.log else 0
 
     def load(self, path: Path) -> ReplayLog:
         log = load_replay_log(path)
@@ -166,9 +187,19 @@ class ReplayController:
 
     def step_forward(self) -> bool:
         log = self._require_loaded()
-        if self.position >= len(log.changes):
+        if self.position >= len(log.steps):
             return False
-        next_snapshot = self.adapter.apply_change(log.changes[self.position])
+        start_snapshot = self._position_snapshots[self.position]
+        next_snapshot = start_snapshot
+        try:
+            for change in log.steps[self.position]:
+                next_snapshot = self.adapter.apply_change(change)
+        except Exception:
+            self.adapter.restore_snapshot(
+                start_snapshot,
+                f"KiLog: recover replay step {self.position}",
+            )
+            raise
         self.position += 1
         del self._position_snapshots[self.position :]
         self._position_snapshots.append(next_snapshot)
@@ -182,7 +213,7 @@ class ReplayController:
 
     def seek(self, position: int) -> None:
         log = self._require_loaded()
-        target = max(0, min(int(position), len(log.changes)))
+        target = max(0, min(int(position), len(log.steps)))
         if target == self.position:
             return
         was_playing = self.playing
@@ -215,6 +246,20 @@ class ReplayController:
 
     def skip(self, amount: int) -> None:
         self.seek(self.position + amount)
+
+    def note(self) -> Path:
+        """Save the current replay state using its actual position in the log."""
+        log = self._require_loaded()
+        stem = log.path.stem
+        if stem.lower().endswith("_log"):
+            stem = stem[:-4]
+        path = snapshot_path(log.path.parent, stem, self.position)
+        if path.exists():
+            raise ReplayError(
+                f"Replay position {self.position} is already marked as {path.name}."
+            )
+        self.adapter.save_copy(path)
+        return path
 
     def _require_loaded(self) -> ReplayLog:
         if self.log is None or self.baseline is None:

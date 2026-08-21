@@ -10,8 +10,7 @@ from .diffing import build_event
 from .model import BoardSnapshot
 from .storage import (
     normalize_stem,
-    next_counter,
-    numbered_path,
+    snapshot_path,
     write_json_atomic,
     write_json_new,
 )
@@ -34,15 +33,22 @@ class BoardAdapter(Protocol):
 
     def snapshot(self) -> BoardSnapshot: ...
 
+    def prepare_recording(self) -> BoardSnapshot: ...
+
     def save_copy(self, path: Path) -> None: ...
 
+    def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int: ...
+
     def undo_to(self, target: BoardSnapshot) -> tuple[BoardSnapshot, str]: ...
+
+    def restore_snapshot(self, target: BoardSnapshot, description: str = "") -> BoardSnapshot: ...
 
 
 @dataclass(frozen=True)
 class RecorderConfig:
     pcb_stem: str = "ref"
     settle_seconds: float = 0.45
+    overwrite_existing: bool = False
 
 
 @dataclass(frozen=True)
@@ -64,30 +70,41 @@ class Recorder:
         self.events: list[dict] = []
         self.log_path: Path | None = None
         self.log_counter = 1
-        self.note_counter = 1
+        self.preview_position: int | None = None
 
     @property
     def event_count(self) -> int:
         return len(self.history)
 
+    @property
+    def recorded_position(self) -> int:
+        """Record step corresponding to the current board state."""
+        return self.event_count
+
     def start(self, config: RecorderConfig) -> BoardSnapshot:
         if self.recording:
             raise RecorderError("Recording is already running.")
-        pcb_stem = normalize_stem(config.pcb_stem, ".kicad_pcb")
-        self.config = RecorderConfig(pcb_stem, config.settle_seconds)
+        pcb_stem = normalize_stem(config.pcb_stem, ".json")
+        self.config = RecorderConfig(
+            pcb_stem,
+            config.settle_seconds,
+            config.overwrite_existing,
+        )
         output = self.adapter.output_directory
         output.mkdir(parents=True, exist_ok=True)
-        log_path = output / f"{pcb_stem}_log.json"
-        if log_path.exists():
+        log_path = output / f"{pcb_stem}.json"
+        if log_path.exists() and not config.overwrite_existing:
             raise LogFileExistsError(
                 f"{log_path.name} already exists in the PCB directory."
             )
-        self.note_counter = next_counter(output, pcb_stem, ".kicad_pcb")
-        baseline = self.adapter.snapshot()
+        baseline = self.adapter.prepare_recording()
         self.session_uuid = str(uuid4())
         self.events = []
         try:
-            write_json_new(log_path, self._log_document(baseline))
+            if config.overwrite_existing:
+                write_json_atomic(log_path, self._log_document(baseline))
+            else:
+                write_json_new(log_path, self._log_document(baseline))
         except FileExistsError as exc:
             raise LogFileExistsError(
                 f"{log_path.name} already exists in the PCB directory."
@@ -97,6 +114,7 @@ class Recorder:
         self.pending = None
         self.history.clear()
         self.log_counter = 1
+        self.preview_position = None
         self.recording = True
         return self.baseline
 
@@ -112,6 +130,7 @@ class Recorder:
             for change in event["changes"]:
                 persisted = self._persisted_change(change)
                 if persisted is not None:
+                    persisted["record_step"] = event["sequence"]
                     changes.append(persisted)
         return {
             "initial_pcb_path": str(board_path),
@@ -134,7 +153,7 @@ class Recorder:
         return {key: value for key, value in change.items() if key != "op"}
 
     def poll(self, now: float | None = None) -> dict | None:
-        if not self.recording or self.baseline is None:
+        if not self.recording or self.baseline is None or self.preview_position is not None:
             return None
         current = self.adapter.snapshot()
         clock = time.monotonic() if now is None else now
@@ -150,7 +169,7 @@ class Recorder:
         return self._commit(current)
 
     def flush(self) -> dict | None:
-        if not self.recording or self.baseline is None:
+        if not self.recording or self.baseline is None or self.preview_position is not None:
             return None
         current = self.adapter.snapshot()
         if current.fingerprint == self.baseline.fingerprint:
@@ -215,24 +234,92 @@ class Recorder:
     def note(self) -> Path:
         if not self.recording:
             raise RecorderError("Click Start before creating a reference snapshot.")
+        if self.preview_position is not None:
+            raise RecorderError("Confirm or cancel the record preview before marking it.")
         self.flush()
-        path = numbered_path(
+        path = snapshot_path(
             self.adapter.output_directory,
             self.config.pcb_stem,
-            self.note_counter,
-            ".kicad_pcb",
+            self.recorded_position,
         )
+        if path.exists():
+            raise RecorderError(
+                f"Recorded position {self.recorded_position} is already marked as {path.name}."
+            )
         self.adapter.save_copy(path)
-        self.note_counter += 1
         return path
 
     def undo(self) -> tuple[Path, str]:
         if not self.recording:
             raise RecorderError("Click Start before using Undo.")
+        if self.preview_position is not None:
+            return self.confirm_preview(), "preview"
         # A user can click undo before the debounce window writes the newest operation.  Flush it
         # first so the PCB action and the JSON file always refer to the same history entry.
         self.flush()
         self.pending = None
+        return self._undo_last()
+
+    def undo_to(self, position: int) -> tuple[Path, tuple[str, ...]]:
+        """Undo recorded events until the requested history position is reached."""
+        if not self.recording:
+            raise RecorderError("Click Start before using Undo.")
+        self.flush()
+        self.pending = None
+        target = int(position)
+        if target < 0 or target >= len(self.history):
+            raise RecorderError(
+                f"Choose a recorded position from 0 to {max(0, len(self.history) - 1)}."
+            )
+        path: Path | None = None
+        strategies: list[str] = []
+        while len(self.history) > target:
+            path, strategy = self._undo_last()
+            strategies.append(strategy)
+        assert path is not None
+        return path, tuple(strategies)
+
+    def preview(self, position: int) -> int:
+        """Show a prior recorded state without truncating the log yet."""
+        if not self.recording or self.baseline is None:
+            raise RecorderError("Click Start before previewing recorded positions.")
+        if self.preview_position is None:
+            self.flush()
+        target = max(0, min(int(position), len(self.history)))
+        snapshot = self.baseline if target == len(self.history) else self.history[target].before
+        restored = self.adapter.restore_snapshot(
+            snapshot,
+            f"KiLog: preview recorded position {target}",
+        )
+        if restored.fingerprint != snapshot.fingerprint:
+            raise RecorderError(f"KiCad could not preview recorded position {target}.")
+        self.pending = None
+        self.preview_position = None if target == len(self.history) else target
+        return target
+
+    def confirm_preview(self) -> Path:
+        """Keep the previewed PCB state and discard all later recorded events."""
+        if self.preview_position is None:
+            raise RecorderError("Choose an earlier record position first.")
+        target = self.preview_position
+        snapshot = self.history[target].before
+        current = self.adapter.snapshot()
+        if current.fingerprint != snapshot.fingerprint:
+            raise RecorderError("The PCB no longer matches the selected record preview.")
+        assert self.log_path is not None
+        remaining_events = self.events[:target]
+        write_json_atomic(
+            self.log_path,
+            self._log_document(snapshot, remaining_events),
+        )
+        self.events = remaining_events
+        del self.history[target:]
+        self.baseline = snapshot
+        self.log_counter = target + 1
+        self.preview_position = None
+        return self.log_path
+
+    def _undo_last(self) -> tuple[Path, str]:
         if not self.history:
             raise RecorderError("There are no recorded operations to undo.")
         entry = self.history[-1]
@@ -261,6 +348,8 @@ class Recorder:
     def end(self) -> dict | None:
         if not self.recording:
             return None
+        if self.preview_position is not None:
+            raise RecorderError("Confirm or cancel the record preview before ending recording.")
         event = self.flush()
         self.recording = False
         self.pending = None

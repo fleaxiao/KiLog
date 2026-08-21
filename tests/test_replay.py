@@ -36,9 +36,12 @@ class ReplayAdapter:
         self.restore_descriptions.append(description)
         return target
 
-    def apply_change(self, change):
-        self.applied.append(change["change_uuid"])
+    def apply_step(self, changes, description=""):
+        self.applied.extend(
+            f"change-{int(change['position']['x_nm'])}" for change in changes
+        )
         self.apply_calls += 1
+        change = changes[-1]
         self.current = snapshot(
             item(
                 "fp-1",
@@ -59,13 +62,16 @@ def write_log(path, count=3):
         json.dumps(
             {
                 "initial_pcb_path": "C:/project/demo.kicad_pcb",
-                "changes": [
+                "steps": [
                     {
-                        "change_uuid": f"change-{index}",
-                        "item_uuid": "fp-1",
-                        "operation": "footprint.move",
-                        "position": {"x_nm": str(index)},
-                        "orientation": {"value_degrees": 0},
+                        "step": index,
+                        "step_uuid": f"00000000-0000-4000-8000-{index:012d}",
+                        "changes": [{
+                            "id": "fp-1",
+                            "operation": "footprint.move",
+                            "position": {"x_nm": str(index)},
+                            "orientation": {"value_degrees": 0},
+                        }],
                     }
                     for index in range(1, count + 1)
                 ],
@@ -80,16 +86,21 @@ def write_grouped_log(path):
         json.dumps(
             {
                 "initial_pcb_path": "C:/project/demo.kicad_pcb",
-                "changes": [
+                "steps": [
                     {
-                        "change_uuid": f"change-{index}",
-                        "item_uuid": "fp-1",
-                        "operation": "footprint.move",
-                        "position": {"x_nm": str(index)},
-                        "orientation": {"value_degrees": 0},
-                        "record_step": 1 if index <= 2 else 2,
+                        "step": step,
+                        "step_uuid": f"00000000-0000-4000-8000-{step:012d}",
+                        "changes": [
+                            {
+                                "id": "fp-1",
+                                "operation": "footprint.move",
+                                "position": {"x_nm": str(index)},
+                                "orientation": {"value_degrees": 0},
+                            }
+                            for index in indices
+                        ],
                     }
-                    for index in range(1, 5)
+                    for step, indices in ((1, range(1, 3)), (2, range(3, 5)))
                 ],
             }
         ),
@@ -99,9 +110,109 @@ def write_grouped_log(path):
 
 def test_load_validates_log_shape(tmp_path):
     path = tmp_path / "bad.json"
-    path.write_text('{"changes": []}', encoding="utf-8")
+    path.write_text('{"steps": []}', encoding="utf-8")
 
     with pytest.raises(ReplayError, match="initial_pcb_path"):
+        load_replay_log(path)
+
+
+def test_load_rejects_legacy_flat_changes(tmp_path):
+    path = tmp_path / "legacy.json"
+    path.write_text(
+        json.dumps(
+            {
+                "initial_pcb_path": "C:/project/demo.kicad_pcb",
+                "changes": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReplayError, match="steps array"):
+        load_replay_log(path)
+
+
+def test_load_rejects_obsolete_item_uuid(tmp_path):
+    path = tmp_path / "obsolete-id.json"
+    path.write_text(
+        json.dumps(
+            {
+                "initial_pcb_path": "C:/project/demo.kicad_pcb",
+                "steps": [
+                    {
+                        "step": 1,
+                        "step_uuid": "00000000-0000-4000-8000-000000000001",
+                        "changes": [
+                            {
+                                "item_uuid": "fp-1",
+                                "operation": "footprint.move",
+                                "position": {"x_nm": "1"},
+                                "orientation": {"value_degrees": 0},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReplayError, match="obsolete item_uuid"):
+        load_replay_log(path)
+
+
+def test_load_rejects_obsolete_before_after_payloads(tmp_path):
+    path = tmp_path / "obsolete.json"
+    path.write_text(
+        json.dumps(
+            {
+                "initial_pcb_path": "C:/project/demo.kicad_pcb",
+                "steps": [
+                    {
+                        "step": 1,
+                        "step_uuid": "00000000-0000-4000-8000-000000000001",
+                        "changes": [
+                            {
+                                "id": "fp-1",
+                                "operation": "footprint.move",
+                                "after": {"position": {"x_nm": "1"}},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReplayError, match="obsolete before/after"):
+        load_replay_log(path)
+
+
+def test_load_rejects_duplicate_step_uuid(tmp_path):
+    path = tmp_path / "duplicate-step-uuid.json"
+    document = {
+        "initial_pcb_path": "C:/project/demo.kicad_pcb",
+        "steps": [],
+    }
+    for step in (1, 2):
+        document["steps"].append(
+            {
+                "step": step,
+                "step_uuid": "00000000-0000-4000-8000-000000000001",
+                "changes": [
+                    {
+                        "id": "fp-1",
+                        "operation": "footprint.move",
+                        "position": {"x_nm": str(step)},
+                        "orientation": {"value_degrees": 0},
+                    }
+                ],
+            }
+        )
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ReplayError, match="duplicate step_uuid"):
         load_replay_log(path)
 
 
@@ -112,7 +223,7 @@ def test_default_playback_interval_is_point_four_seconds():
     assert replay.speed == 1.0
 
 
-def test_replay_groups_multiple_changes_by_record_step(tmp_path):
+def test_replay_groups_multiple_changes_by_step(tmp_path):
     path = tmp_path / "grouped.json"
     write_grouped_log(path)
     adapter = ReplayAdapter()
@@ -125,7 +236,7 @@ def test_replay_groups_multiple_changes_by_record_step(tmp_path):
     replay.step_forward()
 
     assert replay.position == 1
-    assert adapter.apply_calls == 2
+    assert adapter.apply_calls == 1
     assert adapter.applied == ["change-1", "change-2"]
 
 

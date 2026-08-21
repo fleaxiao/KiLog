@@ -712,29 +712,42 @@ class KiCadBoardAdapter:
         if orientation is not None:
             footprint.orientation = cls._replay_orientation(orientation)
 
-    def apply_change(self, change: dict) -> BoardSnapshot:
-        """Apply one persisted KiLog change to the live PCB."""
+    def _state_for_replay_item(self, item) -> ItemState:
+        proto = item.proto
+        data = MessageToDict(
+            proto,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=False,
+            always_print_fields_with_no_presence=True,
+        )
+        return ItemState(
+            item_uuid=proto.id.value,
+            kind=self._kind(item),
+            type_name=proto.DESCRIPTOR.full_name,
+            data=data,
+            raw_item=item,
+        )
+
+    def _apply_change_to_states(
+        self,
+        states: dict[str, ItemState],
+        change: dict,
+    ) -> None:
+        """Apply a change to an in-memory step state without touching KiCad."""
         item_uuid = change["item_uuid"]
         operation = change["operation"]
-        current = self._snapshot_with_retry()
-        state = current.items.get(item_uuid)
+        state = states.get(item_uuid)
 
         if operation.endswith(".remove"):
             if state is None:
                 raise ReplayError(f"PCB item {item_uuid} does not exist.")
-            commit = self.board.begin_commit()
-            try:
-                self.board.remove_items_by_id([state.raw_item.id])
-                self.board.push_commit(commit, f"KiLog replay: {operation}")
-            except Exception:
-                self.board.drop_commit(commit)
-                raise
-            return self._snapshot_with_retry()
+            del states[item_uuid]
+            return
 
         if state is None and operation.endswith(".add"):
-            after = change.get("after")
-            type_name = after.get("type") if isinstance(after, dict) else None
-            data = after.get("data") if isinstance(after, dict) else None
+            item = change.get("item")
+            type_name = item.get("type") if isinstance(item, dict) else None
+            data = item.get("data") if isinstance(item, dict) else None
             if not isinstance(type_name, str) or not isinstance(data, dict):
                 raise ReplayError(f"{operation} does not contain a complete PCB item.")
             new_item = None
@@ -746,14 +759,10 @@ class KiCadBoardAdapter:
             if new_item is None:
                 raise ReplayError(f"Unsupported PCB item type: {type_name}")
             ParseDict(data, new_item.proto)
-            commit = self.board.begin_commit()
-            try:
-                self.board.create_items([new_item])
-                self.board.push_commit(commit, f"KiLog replay: {operation}")
-            except Exception:
-                self.board.drop_commit(commit)
-                raise
-            return self._snapshot_with_retry()
+            if new_item.proto.id.value != item_uuid:
+                raise ReplayError(f"{operation} item UUID does not match {item_uuid}.")
+            states[item_uuid] = self._state_for_replay_item(new_item)
+            return
 
         if state is None:
             raise ReplayError(
@@ -767,6 +776,18 @@ class KiCadBoardAdapter:
                 raise ReplayError(f"PCB item {item_uuid} is not a footprint.")
             self._apply_footprint_transform(updated, change)
         else:
+            item = change.get("item")
+            if item is not None:
+                type_name = item.get("type") if isinstance(item, dict) else None
+                item_data = item.get("data") if isinstance(item, dict) else None
+                if type_name != state.type_name or not isinstance(item_data, dict):
+                    raise ReplayError(f"{operation} does not contain a compatible PCB item.")
+                ParseDict(item_data, updated.proto)
+                if updated.proto.id.value != item_uuid:
+                    raise ReplayError(f"{operation} item UUID does not match {item_uuid}.")
+                states[item_uuid] = self._state_for_replay_item(updated)
+                return
+
             path = change.get("path")
             if not isinstance(path, str):
                 raise ReplayError(f"{operation} has no replayable JSON path.")
@@ -776,23 +797,49 @@ class KiCadBoardAdapter:
             data = copy.deepcopy(state.log_value())
             relative = parts[2:]
             if not relative:
-                after = change.get("after")
-                if not isinstance(after, dict) or "data" not in after:
-                    raise ReplayError(f"{operation} cannot create or replace {item_uuid}.")
-                data = after
+                raise ReplayError(f"{operation} has no item target for {item_uuid}.")
+            if "value" in change:
+                self._set_pointer_value(data, relative, change["value"])
+            elif change.get("delete") is True:
+                self._set_pointer_value(data, relative, None, remove=True)
             else:
-                if "after" in change:
-                    self._set_pointer_value(data, relative, change["after"])
-                elif "before" in change:
-                    self._set_pointer_value(data, relative, None, remove=True)
-                else:
-                    raise ReplayError(f"{operation} has neither before nor after value.")
+                raise ReplayError(f"{operation} has neither a value nor a delete marker.")
             ParseDict(data["data"], updated.proto)
+
+        states[item_uuid] = self._state_for_replay_item(updated)
+
+    def apply_step(
+        self,
+        changes: tuple[dict, ...] | list[dict],
+        description: str = "KiLog replay step",
+    ) -> BoardSnapshot:
+        """Apply all changes in one replay step as one undoable KiCad commit."""
+        current = self._snapshot_with_retry()
+        states = dict(current.items)
+        for change in changes:
+            self._apply_change_to_states(states, change)
+
+        current_ids = set(current.items)
+        target_ids = set(states)
+        remove_ids = [current.items[item_id].raw_item.id for item_id in current_ids - target_ids]
+        create_items = [states[item_id].raw_item for item_id in target_ids - current_ids]
+        update_items = [
+            states[item_id].raw_item
+            for item_id in current_ids & target_ids
+            if current.items[item_id].log_value() != states[item_id].log_value()
+        ]
+        if not remove_ids and not create_items and not update_items:
+            return current
 
         commit = self.board.begin_commit()
         try:
-            self.board.update_items([updated])
-            self.board.push_commit(commit, f"KiLog replay: {operation}")
+            if remove_ids:
+                self.board.remove_items_by_id(remove_ids)
+            if create_items:
+                self.board.create_items(create_items)
+            if update_items:
+                self.board.update_items(update_items)
+            self.board.push_commit(commit, description)
         except Exception:
             self.board.drop_commit(commit)
             raise

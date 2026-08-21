@@ -22,11 +22,53 @@ def test_poll_debounces_and_appends_event_to_log_json(tmp_path):
     path = tmp_path / "ref.json"
     assert path.exists()
     persisted = json.loads(path.read_text(encoding="utf-8"))
-    assert set(persisted) == {"initial_pcb_path", "changes"}
+    assert set(persisted) == {"initial_pcb_path", "steps"}
     assert persisted["initial_pcb_path"] == str(tmp_path / "demo.kicad_pcb")
-    assert persisted["changes"][0]["item_uuid"] == "fp-1"
-    assert "operation" in persisted["changes"][0]
-    assert "op" not in persisted["changes"][0]
+    assert persisted["steps"][0]["step"] == 1
+    assert persisted["steps"][0]["step_uuid"] == event["event_uuid"]
+    change = persisted["steps"][0]["changes"][0]
+    assert change["id"] == "fp-1"
+    assert "operation" in change
+    assert "op" not in change
+
+
+def test_persisted_field_changes_use_target_only_format():
+    replaced = Recorder._persisted_change(
+        {
+            "change_uuid": "change-1",
+            "item_uuid": "zone-1",
+            "item_kind": "zone",
+            "operation": "zone.refill",
+            "op": "replace",
+            "path": "/items/zone-1/data/priority",
+            "before": 1,
+            "after": 2,
+        }
+    )
+    removed = Recorder._persisted_change(
+        {
+            "change_uuid": "change-2",
+            "item_uuid": "zone-1",
+            "item_kind": "zone",
+            "operation": "zone.refill",
+            "op": "remove",
+            "path": "/items/zone-1/data/priority",
+            "before": 2,
+        }
+    )
+
+    assert replaced == {
+        "id": "zone-1",
+        "operation": "zone.refill",
+        "path": "/items/zone-1/data/priority",
+        "value": 2,
+    }
+    assert removed == {
+        "id": "zone-1",
+        "operation": "zone.refill",
+        "path": "/items/zone-1/data/priority",
+        "delete": True,
+    }
 
 
 def test_note_flushes_change_and_saves_live_copy(tmp_path):
@@ -43,7 +85,7 @@ def test_note_flushes_change_and_saves_live_copy(tmp_path):
     assert note_path.read_text(encoding="utf-8") == "(kicad_pcb)"
 
 
-def test_note_name_uses_record_step_when_one_step_has_multiple_changes(tmp_path):
+def test_note_name_uses_step_when_one_step_has_multiple_changes(tmp_path):
     initial = snapshot()
     changed = snapshot(
         item("track-1", "track", width=250000),
@@ -82,12 +124,42 @@ def test_full_board_copper_zones_are_recorded_for_replay(tmp_path):
     recorder.end()
 
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
-    assert [change["operation"] for change in persisted["changes"]] == [
+    assert len(persisted["steps"]) == 1
+    changes = persisted["steps"][0]["changes"]
+    assert [change["operation"] for change in changes] == [
         "zone.add",
         "zone.add",
     ]
-    assert all("after" in change for change in persisted["changes"])
-    assert [change["record_step"] for change in persisted["changes"]] == [1, 1]
+    assert all("item" in change for change in changes)
+    assert all("before" not in change and "after" not in change for change in changes)
+    assert all(set(change["item"]) == {"type", "data"} for change in changes)
+    assert persisted["steps"][0]["step"] == 1
+    assert isinstance(persisted["steps"][0]["step_uuid"], str)
+
+
+def test_persisted_complete_item_keeps_type_and_native_id_without_kind():
+    persisted = Recorder._persisted_change(
+        {
+            "change_uuid": "change-1",
+            "item_uuid": "track-1",
+            "item_kind": "track",
+            "operation": "routing.add",
+            "op": "add",
+            "path": "/items/track-1",
+            "after": {
+                "kind": "track",
+                "type": "kiapi.board.types.Track",
+                "data": {"id": {"value": "track-1"}, "width": "250000"},
+            },
+        }
+    )
+
+    assert persisted["item"] == {
+        "type": "kiapi.board.types.Track",
+        "data": {"id": {"value": "track-1"}, "width": "250000"},
+    }
+    assert "item_uuid" not in persisted
+    assert "id" not in persisted
 
 
 def test_undo_restores_board_and_removes_event_from_log(tmp_path):
@@ -105,7 +177,7 @@ def test_undo_restores_board_and_removes_event_from_log(tmp_path):
 
     assert removed == log_path
     assert strategy == "native"
-    assert json.loads(log_path.read_text(encoding="utf-8"))["changes"] == []
+    assert json.loads(log_path.read_text(encoding="utf-8"))["steps"] == []
     assert recorder.baseline == initial
     assert recorder.event_count == 0
 
@@ -139,7 +211,7 @@ def test_undo_to_returns_to_selected_record_position(tmp_path):
     assert recorder.event_count == 1
     assert recorder.baseline == first
     persisted = json.loads(path.read_text(encoding="utf-8"))
-    assert len(persisted["changes"]) == 1
+    assert len(persisted["steps"]) == 1
 
 
 def test_record_preview_changes_board_before_undo_confirms_log_truncation(tmp_path):
@@ -162,7 +234,7 @@ def test_record_preview_changes_board_before_undo_confirms_log_truncation(tmp_pa
     assert recorder.preview_position == 1
     assert adapter.current == first
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
-    assert len(persisted["changes"]) == 2
+    assert len(persisted["steps"]) == 2
     assert recorder.poll(now=10) is None
 
     path, strategy = recorder.undo()
@@ -171,7 +243,7 @@ def test_record_preview_changes_board_before_undo_confirms_log_truncation(tmp_pa
     assert recorder.preview_position is None
     assert recorder.event_count == 1
     assert recorder.baseline == first
-    assert len(json.loads(path.read_text(encoding="utf-8"))["changes"]) == 1
+    assert len(json.loads(path.read_text(encoding="utf-8"))["steps"]) == 1
 
 
 def test_confirmed_preview_continues_recording_from_reset_state(tmp_path):
@@ -200,8 +272,12 @@ def test_confirmed_preview_continues_recording_from_reset_state(tmp_path):
     assert recorder.recording
     assert recorder.event_count == 2
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
-    assert [change["record_step"] for change in persisted["changes"]] == [1, 2]
-    assert persisted["changes"][-1]["item_uuid"] == "via-3"
+    assert [step["step"] for step in persisted["steps"]] == [1, 2]
+    assert len({step["step_uuid"] for step in persisted["steps"]}) == 2
+    assert (
+        persisted["steps"][-1]["changes"][0]["item"]["data"]["id"]["value"]
+        == "via-3"
+    )
 
 
 def test_end_flushes_and_stops(tmp_path):
@@ -216,7 +292,7 @@ def test_end_flushes_and_stops(tmp_path):
     assert event is not None
     assert not recorder.recording
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
-    assert len(persisted["changes"]) == 1
+    assert len(persisted["steps"]) == 1
 
 
 def test_undo_without_history_is_rejected(tmp_path):
@@ -237,7 +313,7 @@ def test_undo_flushes_a_change_that_is_still_inside_debounce_window(tmp_path):
     removed, _ = recorder.undo()
 
     assert removed.name == "ref.json"
-    assert json.loads(removed.read_text(encoding="utf-8"))["changes"] == []
+    assert json.loads(removed.read_text(encoding="utf-8"))["steps"] == []
     assert recorder.baseline == initial
 
 
@@ -261,8 +337,8 @@ def test_start_overwrites_existing_log_only_when_explicitly_enabled(tmp_path):
     recorder.start(RecorderConfig(overwrite_existing=True))
 
     persisted = json.loads(path.read_text(encoding="utf-8"))
-    assert set(persisted) == {"initial_pcb_path", "changes"}
-    assert persisted["changes"] == []
+    assert set(persisted) == {"initial_pcb_path", "steps"}
+    assert persisted["steps"] == []
     assert recorder.recording
 
 
@@ -315,15 +391,14 @@ def test_consecutive_footprint_transforms_keep_only_final_angle(tmp_path):
     recorder.poll(now=100.1)
 
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
-    assert len(persisted["changes"]) == 1
-    transform = persisted["changes"][0]
+    assert len(persisted["steps"]) == 1
+    assert persisted["steps"][0]["step"] == 1
+    transform = persisted["steps"][0]["changes"][0]
     assert set(transform) == {
-        "change_uuid",
-        "item_uuid",
+        "id",
         "operation",
         "position",
         "orientation",
-        "record_step",
     }
     assert transform["operation"] == "footprint.move"
     assert transform["position"] == {"x": 15, "y": 25}

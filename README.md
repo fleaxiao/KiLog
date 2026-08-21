@@ -90,10 +90,17 @@ Fanout behavior:
 
 ## Log format
 
-Each change has a `record_step`. Changes captured together share the same step
-and are replayed as one displayed position. Footprint placement, movement, and
+Changes captured together are stored under one step and replayed as one atomic
+KiCad commit, without exposing intermediate object states. Footprint placement, movement, and
 rotation are stored as `footprint.move`; consecutive transforms keep only the
 latest position and angle.
+
+Persisted changes describe only their replay target: complete additions use
+`item` with the exact KiCad `type` and `data` (including `data.id.value`), field
+updates use `value`, and field removals use `delete: true`. The recording JSON
+does not store the redundant item `kind` or `item_uuid`, or any `before` and
+`after` values. Changes without a complete `item` use the shorter `id` field.
+Each numbered `step` has one `step_uuid`; individual changes do not carry UUIDs.
 
 Footprints outside the live `Edge.Cuts` boundary are ignored. Moving a footprint
 into the board is recorded; moving it out does not preserve the outside position.
@@ -101,14 +108,18 @@ into the board is recorded; moving it out does not preserve the outside position
 ```json
 {
   "initial_pcb_path": "C:/project/board.kicad_pcb",
-  "changes": [
+  "steps": [
     {
-      "change_uuid": "...",
-      "record_step": 1,
-      "item_uuid": "...",
-      "operation": "footprint.move",
-      "position": {"x_nm": "10000000", "y_nm": "20000000"},
-      "orientation": {"value_degrees": 270}
+      "step": 1,
+      "step_uuid": "...",
+      "changes": [
+        {
+          "id": "...",
+          "operation": "footprint.move",
+          "position": {"x_nm": "10000000", "y_nm": "20000000"},
+          "orientation": {"value_degrees": 270}
+        }
+      ]
     }
   ]
 }

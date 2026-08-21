@@ -41,6 +41,8 @@ class FillBoard(FakeBoard):
         super().__init__(items)
         self.created = []
         self.commit_message = ""
+        self.commit_count = 0
+        self.create_calls = 0
         self.refilled = False
 
     def get_nets(self):
@@ -50,11 +52,13 @@ class FillBoard(FakeBoard):
         return object()
 
     def create_items(self, items):
+        self.create_calls += 1
         self.created.extend(items)
         self.items.extend(items)
         return items
 
     def push_commit(self, _commit, message):
+        self.commit_count += 1
         self.commit_message = message
 
     def drop_commit(self, _commit):
@@ -471,14 +475,46 @@ def test_replay_recreates_recorded_copper_zone():
     board = FillBoard([])
     adapter = KiCadBoardAdapter(object(), board)
 
-    result = adapter.apply_change(
-        {
+    result = adapter.apply_step(
+        ({
             "item_uuid": "zone-front",
             "operation": "zone.add",
-            "after": source_state.items["zone-front"].log_value(),
-        }
+            "item": source_state.items["zone-front"].log_value(),
+        },)
     )
 
     assert result.items["zone-front"].kind == "zone"
     assert board.created[0].net.name == "GND"
     assert list(board.created[0].layers) == [BoardLayer.BL_F_Cu]
+
+
+def test_replay_applies_multiple_changes_as_one_board_commit():
+    zones = []
+    for item_uuid, layer in (
+        ("zone-front", BoardLayer.BL_F_Cu),
+        ("zone-back", BoardLayer.BL_B_Cu),
+    ):
+        zone = with_id(Zone(), item_uuid)
+        zone.net = Net(name="GND")
+        zone.layers = [layer]
+        zones.append(zone)
+    source = KiCadBoardAdapter(object(), FakeBoard(zones)).snapshot()
+    board = FillBoard([])
+    adapter = KiCadBoardAdapter(object(), board)
+
+    result = adapter.apply_step(
+        tuple(
+            {
+                "item_uuid": item_uuid,
+                "operation": "zone.add",
+                "item": source.items[item_uuid].log_value(),
+            }
+            for item_uuid in ("zone-front", "zone-back")
+        ),
+        "KiLog replay: step 1",
+    )
+
+    assert set(result.items) == {"zone-front", "zone-back"}
+    assert board.create_calls == 1
+    assert board.commit_count == 1
+    assert board.commit_message == "KiLog replay: step 1"

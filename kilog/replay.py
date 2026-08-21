@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import time
 from typing import Any, Protocol
+from uuid import UUID
 
 from .model import BoardSnapshot
 from .storage import snapshot_path
@@ -19,7 +20,11 @@ class ReplayAdapter(Protocol):
 
     def restore_snapshot(self, target: BoardSnapshot, description: str = "") -> BoardSnapshot: ...
 
-    def apply_change(self, change: dict[str, Any]) -> BoardSnapshot: ...
+    def apply_step(
+        self,
+        changes: tuple[dict[str, Any], ...],
+        description: str = "",
+    ) -> BoardSnapshot: ...
 
     def save_copy(self, path: Path) -> None: ...
 
@@ -40,32 +45,67 @@ def load_replay_log(path: Path) -> ReplayLog:
     if not isinstance(document, dict):
         raise ReplayError("The log root must be a JSON object.")
     initial_path = document.get("initial_pcb_path")
-    changes = document.get("changes")
+    raw_steps = document.get("steps")
     if not isinstance(initial_path, str) or not initial_path.strip():
         raise ReplayError("The log has no valid initial_pcb_path.")
-    if not isinstance(changes, list):
-        raise ReplayError("The log has no valid changes array.")
+    if not isinstance(raw_steps, list):
+        raise ReplayError("The log has no valid steps array.")
+
+    grouped_changes: list[list[dict[str, Any]]] = []
+    changes: list[Any] = []
+    seen_step_uuids: set[UUID] = set()
+    for step_index, step in enumerate(raw_steps, 1):
+        if not isinstance(step, dict):
+            raise ReplayError(f"Step #{step_index} must be a JSON object.")
+        if step.get("step") != step_index:
+            raise ReplayError(
+                f"Step #{step_index} must have step {step_index}."
+            )
+        step_uuid = step.get("step_uuid")
+        try:
+            parsed_step_uuid = UUID(step_uuid)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ReplayError(f"Step #{step_index} has no valid step_uuid.") from exc
+        if parsed_step_uuid in seen_step_uuids:
+            raise ReplayError(f"Step #{step_index} has a duplicate step_uuid.")
+        seen_step_uuids.add(parsed_step_uuid)
+        step_changes = step.get("changes")
+        if not isinstance(step_changes, list) or not step_changes:
+            raise ReplayError(f"Step #{step_index} has no valid changes array.")
+        grouped_changes.append(step_changes)
+        changes.extend(step_changes)
     validated: list[dict[str, Any]] = []
     for index, change in enumerate(changes, 1):
         if not isinstance(change, dict):
             raise ReplayError(f"Change #{index} must be a JSON object.")
-        if not isinstance(change.get("item_uuid"), str) or not change["item_uuid"]:
-            raise ReplayError(f"Change #{index} has no item_uuid.")
+        if "item_uuid" in change:
+            raise ReplayError(f"Change #{index} uses obsolete item_uuid.")
+        if "change_uuid" in change:
+            raise ReplayError(f"Change #{index} uses obsolete change_uuid.")
         if not isinstance(change.get("operation"), str) or not change["operation"]:
             raise ReplayError(f"Change #{index} has no operation.")
-        record_step = change.get("record_step")
-        if record_step is not None and (not isinstance(record_step, int) or record_step < 1):
-            raise ReplayError(f"Change #{index} has an invalid record_step.")
-        validated.append(dict(change))
+        if "before" in change or "after" in change:
+            raise ReplayError(
+                f"Change #{index} uses obsolete before/after fields."
+            )
+        item = change.get("item")
+        data = item.get("data") if isinstance(item, dict) else None
+        native_id = data.get("id") if isinstance(data, dict) else None
+        nested_id = native_id.get("value") if isinstance(native_id, dict) else None
+        explicit_id = change.get("id")
+        item_uuid = nested_id if isinstance(nested_id, str) and nested_id else explicit_id
+        if not isinstance(item_uuid, str) or not item_uuid:
+            raise ReplayError(f"Change #{index} has no valid object ID.")
+        if explicit_id is not None and explicit_id != item_uuid:
+            raise ReplayError(f"Change #{index} contains conflicting object IDs.")
+        normalized = dict(change)
+        normalized["item_uuid"] = item_uuid
+        validated.append(normalized)
     steps: list[list[dict[str, Any]]] = []
-    previous_step: int | None = None
-    for change in validated:
-        record_step = change.get("record_step")
-        if isinstance(record_step, int) and steps and record_step == previous_step:
-            steps[-1].append(change)
-        else:
-            steps.append([change])
-        previous_step = record_step if isinstance(record_step, int) else None
+    offset = 0
+    for group in grouped_changes:
+        steps.append(validated[offset : offset + len(group)])
+        offset += len(group)
     return ReplayLog(
         path.resolve(),
         initial_path,
@@ -188,10 +228,11 @@ class ReplayController:
         if self.position >= len(log.steps):
             return False
         start_snapshot = self._position_snapshots[self.position]
-        next_snapshot = start_snapshot
         try:
-            for change in log.steps[self.position]:
-                next_snapshot = self.adapter.apply_change(change)
+            next_snapshot = self.adapter.apply_step(
+                log.steps[self.position],
+                f"KiLog replay: step {self.position + 1}",
+            )
         except Exception:
             self.adapter.restore_snapshot(
                 start_snapshot,

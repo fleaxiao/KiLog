@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -119,16 +120,24 @@ class Recorder:
         board_path = getattr(self.adapter, "board_path", None)
         if board_path is None:
             board_path = baseline.board_name
-        changes = []
+        steps = []
         for event in recorded_events:
+            changes = []
             for change in event["changes"]:
                 persisted = self._persisted_change(change)
                 if persisted is not None:
-                    persisted["record_step"] = event["sequence"]
                     changes.append(persisted)
+            if changes:
+                steps.append(
+                    {
+                        "step": event["sequence"],
+                        "step_uuid": event["event_uuid"],
+                        "changes": changes,
+                    }
+                )
         return {
             "initial_pcb_path": str(board_path),
-            "changes": changes,
+            "steps": steps,
         }
 
     @staticmethod
@@ -138,13 +147,61 @@ class Recorder:
             if not isinstance(transform, dict):
                 return None
             return {
-                "change_uuid": change["change_uuid"],
-                "item_uuid": change["item_uuid"],
+                "id": change["item_uuid"],
                 "operation": "footprint.move",
                 "position": transform.get("position"),
                 "orientation": transform.get("orientation"),
             }
-        return {key: value for key, value in change.items() if key != "op"}
+
+        operation = change.get("operation")
+        item_uuid = change.get("item_uuid")
+        path = change.get("path")
+        op = change.get("op")
+        if not all(isinstance(value, str) and value for value in (
+            item_uuid,
+            operation,
+            path,
+        )):
+            return None
+
+        persisted = {
+            "operation": operation,
+        }
+        root_item_change = len(path.split("/")) == 3
+        if root_item_change:
+            if op in {"add", "replace"}:
+                item = change.get("after")
+                type_name = item.get("type") if isinstance(item, dict) else None
+                data = item.get("data") if isinstance(item, dict) else None
+                if not isinstance(type_name, str) or not isinstance(data, dict):
+                    return None
+                data = copy.deepcopy(data)
+                native_id = data.get("id")
+                if native_id is None:
+                    data["id"] = {"value": item_uuid}
+                elif not isinstance(native_id, dict):
+                    return None
+                elif native_id.get("value") is None:
+                    native_id["value"] = item_uuid
+                elif native_id.get("value") != item_uuid:
+                    return None
+                persisted["item"] = {
+                    "type": type_name,
+                    "data": data,
+                }
+            else:
+                persisted["id"] = item_uuid
+            return persisted
+
+        persisted["id"] = item_uuid
+        persisted["path"] = path
+        if op in {"add", "replace"} and "after" in change:
+            persisted["value"] = change["after"]
+        elif op == "remove":
+            persisted["delete"] = True
+        else:
+            return None
+        return persisted
 
     def poll(self, now: float | None = None) -> dict | None:
         if not self.recording or self.baseline is None or self.preview_position is not None:

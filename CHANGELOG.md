@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Store recordings as UUID-addressed grouped steps with target-only values and replay every step as one atomic KiCad commit.
 - Simplify recorder history state and remove unused storage/replay APIs.
 - Remove obsolete no-op status plumbing from the compact UI.
 - Reorganize the README around installation, workflows, safety, and development.

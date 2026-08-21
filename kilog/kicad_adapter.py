@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import os
 from pathlib import Path
 import time
@@ -15,6 +16,7 @@ from kipy.board_types import (
     BoardLayer,
     Dimension,
     FootprintInstance,
+    PadType,
     Track,
     Via,
     Zone,
@@ -25,7 +27,12 @@ from kipy.proto.common.commands.editor_commands_pb2 import RAS_OK
 from kipy.proto.common import types as common_types
 from kipy.proto.common.types import KiCadObjectType
 
-from .board_outline import ordered_board_loops
+from .board_outline import (
+    circle_inside_board,
+    ordered_board_loops,
+    point_inside_board,
+    point_segment_distance,
+)
 from .diffing import edge_segments
 from .model import BoardSnapshot, ItemState
 from .recorder import RecorderError
@@ -75,6 +82,13 @@ class KiCadBoardAdapter:
     """
 
     REVERT_SETTLE_SECONDS = 0.65
+    FANOUT_LENGTH_NM = 1_000_000
+    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.5
+    FANOUT_VIA_DIAMETER_NM = 600_000
+    FANOUT_VIA_DRILL_NM = 300_000
+    FANOUT_PAD_CLEARANCE_NM = 200_000
+    FANOUT_EDGE_CLEARANCE_NM = 200_000
+    FANOUT_SEARCH_STEP_NM = 500_000
 
     def __init__(self, kicad: KiCad, board: Board):
         self.kicad = kicad
@@ -207,7 +221,7 @@ class KiCadBoardAdapter:
         return polygon
 
     def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int:
-        """Create one full-board copper zone on each requested layer."""
+        """Create one unfilled full-board copper zone on each requested layer."""
         requested_net = net_name.strip()
         if not requested_net:
             raise RecorderError("Enter a network name for the copper fill.")
@@ -248,12 +262,301 @@ class KiCadBoardAdapter:
         commit = self.board.begin_commit()
         try:
             self.board.create_items(zones)
-            self.board.push_commit(commit, f"KiLog: fill board with {net.name}")
+            self.board.push_commit(commit, f"KiLog: create board zones for {net.name}")
         except Exception:
             self.board.drop_commit(commit)
             raise
-        self.board.refill_zones()
         return len(zones)
+
+    def fanout_net(
+        self,
+        net_name: str,
+        default_width_mm: float | str = FANOUT_DEFAULT_TRACK_WIDTH_MM,
+    ) -> int:
+        """Fan out on-board SMD pads while keeping vias clear of pads and edges."""
+        requested_net = net_name.strip()
+        if not requested_net:
+            raise RecorderError("Enter a network name for fanout.")
+
+        nets = list(self.board.get_nets())
+        net = next(
+            (value for value in nets if value.name.casefold() == requested_net.casefold()),
+            None,
+        )
+        if net is None:
+            raise RecorderError(f"Network {requested_net!r} does not exist on this board.")
+        try:
+            default_width_nm = round(float(default_width_mm) * 1_000_000)
+        except (TypeError, ValueError) as exc:
+            raise RecorderError("Fanout Width must be a number in millimetres.") from exc
+        if default_width_nm <= 0:
+            raise RecorderError("Fanout Width must be greater than zero.")
+
+        snapshot = self.snapshot()
+        items = [state.raw_item for state in snapshot.items.values()]
+        loops = ordered_board_loops(edge_segments(snapshot))
+        if not loops:
+            raise RecorderError("Edge.Cuts does not contain a closed board outline.")
+        footprints = [
+            item
+            for item in items
+            if isinstance(item, FootprintInstance)
+            and point_inside_board((item.position.x, item.position.y), loops)
+        ]
+        pad_obstacles = [
+            (pad.position.x, pad.position.y, self._pad_radius(pad), pad)
+            for footprint in footprints
+            for pad in footprint.definition.pads
+        ]
+        via_obstacles = [
+            (item.position.x, item.position.y, self._via_radius(item))
+            for item in items
+            if isinstance(item, Via)
+        ]
+        existing_tracks = [item for item in items if isinstance(item, (Track, ArcTrack))]
+        board_x = [point[0] for loop in loops for point in loop]
+        board_y = [point[1] for loop in loops for point in loop]
+        max_search = math.hypot(max(board_x) - min(board_x), max(board_y) - min(board_y))
+        created = []
+        fanout_count = 0
+        matching_pad_count = 0
+        already_fanned_count = 0
+
+        for footprint in footprints:
+            layer = (
+                BoardLayer.BL_B_Cu
+                if footprint.layer == BoardLayer.BL_B_Cu
+                else BoardLayer.BL_F_Cu
+            )
+            for pad in footprint.definition.pads:
+                if pad.pad_type != PadType.PT_SMD or pad.net.name.casefold() != net.name.casefold():
+                    continue
+                matching_pad_count += 1
+                if self._pad_is_fanned_out(pad, existing_tracks, items):
+                    already_fanned_count += 1
+                    continue
+
+                track_width = self._fanout_track_width(
+                    pad,
+                    existing_tracks,
+                    default_width_nm,
+                )
+                via_position = self._find_fanout_position(
+                    pad,
+                    footprint,
+                    loops,
+                    pad_obstacles,
+                    via_obstacles,
+                    max_search,
+                    track_width,
+                )
+                if via_position is None:
+                    continue
+
+                track = Track()
+                track.net = net
+                track.layer = layer
+                track.start = pad.position
+                track.end = via_position
+                track.width = track_width
+
+                via = Via()
+                via.net = net
+                via.position = via_position
+                via.diameter = self.FANOUT_VIA_DIAMETER_NM
+                via.drill_diameter = self.FANOUT_VIA_DRILL_NM
+
+                created.extend((track, via))
+                via_obstacles.append(
+                    (via_position.x, via_position.y, self.FANOUT_VIA_DIAMETER_NM / 2)
+                )
+                fanout_count += 1
+
+        if not created and matching_pad_count and already_fanned_count == matching_pad_count:
+            return 0
+        if not created:
+            raise RecorderError(f"No unfanned SMD pads found on network {net.name!r}.")
+
+        commit = self.board.begin_commit()
+        try:
+            self.board.create_items(created)
+            self.board.push_commit(commit, f"KiLog: fanout {net.name}")
+        except Exception:
+            self.board.drop_commit(commit)
+            raise
+        return fanout_count
+
+    @staticmethod
+    def _pad_radius(pad) -> float:
+        """Return a conservative circular bound for every copper shape in a pad."""
+        radius = 0.0
+        for copper_layer in pad.padstack.copper_layers:
+            shape_radius = math.hypot(copper_layer.size.x, copper_layer.size.y) / 2
+            offset = math.hypot(copper_layer.offset.x, copper_layer.offset.y)
+            radius = max(radius, shape_radius + offset)
+        drill = pad.padstack.drill.diameter
+        return max(radius, math.hypot(drill.x, drill.y) / 2)
+
+    @staticmethod
+    def _pad_extent_in_direction(pad, direction_x: int, direction_y: int) -> float:
+        """Return pad copper extent from its anchor along one cardinal direction."""
+        angle = math.radians(pad.padstack.angle.degrees)
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        extent = 0.0
+        for copper_layer in pad.padstack.copper_layers:
+            half_width = copper_layer.size.x / 2
+            half_height = copper_layer.size.y / 2
+            rotated_half_x = abs(cosine) * half_width + abs(sine) * half_height
+            rotated_half_y = abs(sine) * half_width + abs(cosine) * half_height
+            rotated_offset_x = (
+                cosine * copper_layer.offset.x - sine * copper_layer.offset.y
+            )
+            rotated_offset_y = (
+                sine * copper_layer.offset.x + cosine * copper_layer.offset.y
+            )
+            directional_offset = (
+                direction_x * rotated_offset_x + direction_y * rotated_offset_y
+            )
+            directional_half_size = (
+                abs(direction_x) * rotated_half_x + abs(direction_y) * rotated_half_y
+            )
+            extent = max(extent, directional_offset + directional_half_size)
+        drill = pad.padstack.drill.diameter
+        drill_extent = (
+            abs(direction_x) * drill.x / 2 + abs(direction_y) * drill.y / 2
+        )
+        return max(extent, drill_extent)
+
+    @classmethod
+    def _via_radius(cls, via: Via) -> float:
+        try:
+            return via.diameter / 2
+        except ValueError:
+            return cls.FANOUT_VIA_DIAMETER_NM / 2
+
+    @classmethod
+    def _fanout_track_width(cls, pad, tracks, default_width_nm: int) -> int:
+        """Use the width of the closest same-net trace endpoint connected to a pad."""
+        pad_radius = cls._pad_radius(pad)
+        connected = []
+        for track in tracks:
+            if track.net.name.casefold() != pad.net.name.casefold():
+                continue
+            endpoint_distance = min(
+                math.hypot(track.start.x - pad.position.x, track.start.y - pad.position.y),
+                math.hypot(track.end.x - pad.position.x, track.end.y - pad.position.y),
+            )
+            if endpoint_distance <= max(1.0, pad_radius):
+                connected.append((endpoint_distance, -track.width, track.width))
+        return min(connected)[2] if connected else default_width_nm
+
+    @classmethod
+    def _pad_is_fanned_out(cls, pad, tracks, items) -> bool:
+        """Return whether a pad already reaches a same-net via directly or by trace."""
+        pad_net = pad.net.name.casefold()
+        pad_radius = cls._pad_radius(pad)
+        vias = [
+            item
+            for item in items
+            if isinstance(item, Via) and item.net.name.casefold() == pad_net
+        ]
+        if any(
+            math.hypot(via.position.x - pad.position.x, via.position.y - pad.position.y)
+            <= pad_radius + cls._via_radius(via)
+            for via in vias
+        ):
+            return True
+
+        for track in tracks:
+            if track.net.name.casefold() != pad_net:
+                continue
+            endpoints = (track.start, track.end)
+            for pad_endpoint, via_endpoint in (endpoints, endpoints[::-1]):
+                if math.hypot(
+                    pad_endpoint.x - pad.position.x,
+                    pad_endpoint.y - pad.position.y,
+                ) > max(1.0, pad_radius):
+                    continue
+                if any(
+                    math.hypot(
+                        via.position.x - via_endpoint.x,
+                        via.position.y - via_endpoint.y,
+                    )
+                    <= cls._via_radius(via) + track.width / 2
+                    for via in vias
+                ):
+                    return True
+        return False
+
+    def _find_fanout_position(
+        self,
+        pad,
+        footprint: FootprintInstance,
+        loops: list[list[tuple[float, float]]],
+        pad_obstacles: list[tuple[float, float, float, object]],
+        via_obstacles: list[tuple[float, float, float]],
+        max_search: float,
+        track_width_nm: int,
+    ) -> Vector2 | None:
+        via_radius = self.FANOUT_VIA_DIAMETER_NM / 2
+        radial_x = pad.position.x - footprint.position.x
+        radial_y = pad.position.y - footprint.position.y
+        cardinal_directions = ((1, 0), (0, 1), (-1, 0), (0, -1))
+        directions = sorted(
+            cardinal_directions,
+            key=lambda direction: radial_x * direction[0] + radial_y * direction[1],
+            reverse=True,
+        )
+
+        candidates = []
+        for preference, (direction_x, direction_y) in enumerate(directions):
+            distance = max(
+                self.FANOUT_LENGTH_NM,
+                self._pad_extent_in_direction(pad, direction_x, direction_y)
+                + via_radius
+                + self.FANOUT_PAD_CLEARANCE_NM,
+            )
+            while distance <= max_search:
+                candidates.append((distance, preference, direction_x, direction_y))
+                distance += self.FANOUT_SEARCH_STEP_NM
+
+        for distance, _preference, direction_x, direction_y in sorted(candidates):
+            candidate = (
+                round(pad.position.x + distance * direction_x),
+                round(pad.position.y + distance * direction_y),
+            )
+            if not circle_inside_board(
+                candidate,
+                via_radius + self.FANOUT_EDGE_CLEARANCE_NM,
+                loops,
+            ):
+                continue
+            if any(
+                obstacle_pad is not pad
+                and math.hypot(candidate[0] - x, candidate[1] - y)
+                < via_radius + radius + self.FANOUT_PAD_CLEARANCE_NM
+                for x, y, radius, obstacle_pad in pad_obstacles
+            ):
+                continue
+            if any(
+                math.hypot(candidate[0] - x, candidate[1] - y)
+                < via_radius + radius + self.FANOUT_PAD_CLEARANCE_NM
+                for x, y, radius in via_obstacles
+            ):
+                continue
+            start = (pad.position.x, pad.position.y)
+            if any(
+                obstacle[3] is not pad
+                and point_segment_distance((obstacle[0], obstacle[1]), start, candidate)
+                < obstacle[2]
+                + track_width_nm / 2
+                + self.FANOUT_PAD_CLEARANCE_NM
+                for obstacle in pad_obstacles
+            ):
+                continue
+            return Vector2.from_xy(*candidate)
+        return None
 
     def prepare_replay(self, initial_pcb_path: str) -> BoardSnapshot:
         """Reset the matching open board to its saved on-disk replay baseline."""

@@ -17,7 +17,6 @@ ORANGE = "#F2A33A"
 CREAM = "#F3F0E8"
 MUTED = "#A9BCB4"
 DIM = "#72877E"
-RED = "#F07167"
 SLIDER_TRACK = "#28513F"
 TAB_FONT_SIZE = 8
 UI_FONT_SIZE = 8
@@ -27,13 +26,19 @@ META_FONT_SIZE = 8
 class UnderlinedTextField(wx.Panel):
     """A borderless single-line text field with only a bottom rule."""
 
-    def __init__(self, parent: wx.Window, value: str, size: tuple[int, int]):
+    def __init__(
+        self,
+        parent: wx.Window,
+        value: str,
+        size: tuple[int, int],
+        centered: bool = False,
+    ):
         super().__init__(parent, size=size)
         self.SetBackgroundColour(BG)
         self.editor = wx.TextCtrl(
             self,
             value=value,
-            style=wx.BORDER_NONE | wx.TE_LEFT,
+            style=wx.BORDER_NONE | (wx.TE_CENTER if centered else wx.TE_LEFT),
         )
         self.editor.SetMargins(0, 0)
         self.Bind(wx.EVT_SIZE, self._on_size)
@@ -656,6 +661,7 @@ class KiLogWindow(wx.Frame):
             record_page,
             default_name,
             size=(80, 22),
+            centered=True,
         )
         path_size = output.GetMinSize()
         log_height = self.pcb_entry.GetMinSize().GetHeight()
@@ -834,6 +840,12 @@ class KiLogWindow(wx.Frame):
         replay_controls = wx.FlexGridSizer(rows=1, cols=5, vgap=0, hgap=4)
         for column in range(5):
             replay_controls.AddGrowableCol(column, 1)
+        self.replay_start_button = self._icon_button(
+            replay_page,
+            "rewind",
+            self._on_replay_start,
+            "Return to the beginning",
+        )
         self.back_button = self._icon_button(
             replay_page,
             "previous",
@@ -859,9 +871,8 @@ class KiLogWindow(wx.Frame):
             self._on_replay_note,
             "Mark current replay step",
         )
-        replay_spacer = replay_page.FromDIP((52, 25))
-        replay_controls.Add(replay_spacer.GetWidth(), replay_spacer.GetHeight())
         for button in (
+            self.replay_start_button,
             self.back_button,
             self.play_button,
             self.forward_button,
@@ -883,14 +894,16 @@ class KiLogWindow(wx.Frame):
         copper_row = wx.BoxSizer(wx.HORIZONTAL)
         self.fill_board_button = self._button(
             skill_page,
-            "Fill Board",
+            "Fill",
             self._on_fill_board,
         )
         self.fill_board_button.SetMinSize(self.FromDIP((72, 25)))
         net_label = wx.StaticText(skill_page, label="Net:")
         net_label.SetForegroundColour(MUTED)
         net_label.SetFont(self._font(UI_FONT_SIZE))
-        self.copper_net_entry = self._text_field(skill_page, "GND", size=(68, 22))
+        self.copper_net_entry = self._text_field(
+            skill_page, "GND", size=(68, 22), centered=True
+        )
         layer_label = wx.StaticText(skill_page, label="Layers:")
         layer_label.SetForegroundColour(MUTED)
         layer_label.SetFont(self._font(UI_FONT_SIZE))
@@ -908,6 +921,31 @@ class KiLogWindow(wx.Frame):
         copper_row.Add(self.front_copper_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         copper_row.Add(self.back_copper_check, 0, wx.ALIGN_CENTER_VERTICAL)
         skill_sizer.Add(copper_row, 0, wx.EXPAND | wx.ALL, 8)
+        fanout_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.fanout_button = self._button(
+            skill_page,
+            "Fanout",
+            self._on_fanout,
+        )
+        self.fanout_button.SetMinSize(self.FromDIP((72, 25)))
+        fanout_net_label = wx.StaticText(skill_page, label="Net:")
+        fanout_net_label.SetForegroundColour(MUTED)
+        fanout_net_label.SetFont(self._font(UI_FONT_SIZE))
+        self.fanout_net_entry = self._text_field(
+            skill_page, "GND", size=(68, 22), centered=True
+        )
+        fanout_width_label = wx.StaticText(skill_page, label="Width:")
+        fanout_width_label.SetForegroundColour(MUTED)
+        fanout_width_label.SetFont(self._font(UI_FONT_SIZE))
+        self.fanout_width_entry = self._text_field(
+            skill_page, "0.5", size=(52, 22), centered=True
+        )
+        fanout_row.Add(self.fanout_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        fanout_row.Add(fanout_net_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        fanout_row.Add(self.fanout_net_entry, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        fanout_row.Add(fanout_width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        fanout_row.Add(self.fanout_width_entry, 0, wx.ALIGN_CENTER_VERTICAL)
+        skill_sizer.Add(fanout_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         skill_sizer.AddStretchSpacer()
         skill_sizer.AddSpacer(8)
         skill_page.SetSizer(skill_sizer)
@@ -940,8 +978,14 @@ class KiLogWindow(wx.Frame):
         value: str,
         subdued: bool = False,
         size: tuple[int, int] = (150, 18),
+        centered: bool = False,
     ) -> UnderlinedTextField:
-        field = UnderlinedTextField(parent, value=value, size=size)
+        field = UnderlinedTextField(
+            parent,
+            value=value,
+            size=size,
+            centered=centered,
+        )
         field.editor.SetBackgroundColour(BG)
         field.editor.SetForegroundColour(DIM if subdued else CREAM)
         field.editor.SetFont(
@@ -1103,6 +1147,9 @@ class KiLogWindow(wx.Frame):
         )
         self.play_button.SetIcon("pause" if self.replay.playing else "play")
         self.play_button.Enable(enabled and self.replay.total > 0)
+        self.replay_start_button.Enable(
+            enabled and (self.replay.position > 0 or self.replay.playing)
+        )
         self.back_button.Enable(enabled and self.replay.position > 0)
         self.forward_button.Enable(enabled and self.replay.position < self.replay.total)
         self.replay_note_button.Enable(enabled)
@@ -1113,24 +1160,16 @@ class KiLogWindow(wx.Frame):
         self.replay_position_text.GetParent().Layout()
         self.mode_tabs.Layout()
 
-    def _status(self, text: str, _colour: str = ORANGE) -> None:
-        _ = text
+    def _refresh_record(self) -> None:
         self._sync_record_controls()
         self.Layout()
 
-    def _replay_status(self, text: str, _colour: str = ORANGE) -> None:
-        _ = text
-        self.Layout()
-
-    def _run_action(self, action, status_handler=None) -> None:
-        report = status_handler or self._status
+    def _run_action(self, action) -> None:
         try:
             action()
         except LogFileExistsError as exc:
-            report("Recording not started: log file already exists", ORANGE)
             wx.MessageBox(str(exc), "Existing log file", wx.OK | wx.ICON_WARNING, self)
         except Exception as exc:
-            report(str(exc), RED)
             wx.MessageBox(str(exc), "KiLog", wx.OK | wx.ICON_ERROR, self)
 
     def _on_start(self, _event: wx.CommandEvent) -> None:
@@ -1146,7 +1185,6 @@ class KiLogWindow(wx.Frame):
                     self,
                 )
                 if result != wx.YES:
-                    self._status("Recording cancelled · existing log kept", MUTED)
                     return
                 self.recorder.start(
                     RecorderConfig(
@@ -1155,7 +1193,7 @@ class KiLogWindow(wx.Frame):
                     )
                 )
             self._set_controls(True)
-            self._status("Recording live PCB changes", ORANGE)
+            self.Layout()
             wx.CallAfter(self._pcb_window.activate)
 
         self._run_action(action)
@@ -1168,8 +1206,8 @@ class KiLogWindow(wx.Frame):
 
     def _on_note(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
-            path = self.recorder.note()
-            self._status(f"Marked recorded step as {path.name}", ORANGE)
+            self.recorder.note()
+            self._refresh_record()
 
         self._run_action(action)
 
@@ -1178,33 +1216,22 @@ class KiLogWindow(wx.Frame):
             current = self.recorder.event_count
             target = self.record_slider.GetValue()
             if self.recorder.preview_position is not None:
-                path, strategy = self.recorder.undo()
-                strategies = (strategy,)
+                self.recorder.undo()
             elif current == 0 or target >= current:
-                path, strategy = self.recorder.undo()
-                strategies = (strategy,)
+                self.recorder.undo()
             else:
-                path, strategies = self.recorder.undo_to(target)
-            restored = self.recorder.event_count
-            method = "native undo" if all(value == "native" for value in strategies) else "restore"
-            self._status(
-                f"Returned to {restored} · {method} · updated {path.name}",
-                ORANGE,
-            )
+                self.recorder.undo_to(target)
+            self._refresh_record()
 
         self._run_action(action)
 
     def _on_end(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
-            preview_kept = self.recorder.preview_position is not None
-            if preview_kept:
+            if self.recorder.preview_position is not None:
                 self.recorder.confirm_preview()
-            event = self.recorder.end()
+            self.recorder.end()
             self._set_controls(False)
-            suffix = " · final change saved" if event else ""
-            if preview_kept:
-                suffix = " · selected position kept"
-            self._status(f"Recording ended{suffix}", MUTED)
+            self.Layout()
 
         self._run_action(action)
 
@@ -1228,35 +1255,42 @@ class KiLogWindow(wx.Frame):
             self.replay_file_text.SetLabel(str(log.path))
             self.replay_file_text.SetToolTip(str(log.path))
             self._sync_replay_controls()
-            self._replay_status(f"Loaded {len(log.steps)} recorded steps", ORANGE)
+            self.Layout()
 
-        self._run_action(action, self._replay_status)
+        self._run_action(action)
 
-    def _run_replay_action(self, action, status: str | None = None) -> None:
+    def _run_replay_action(self, action) -> None:
         def wrapped() -> None:
             action()
             self._sync_replay_controls()
-            if status:
-                self._replay_status(status, ORANGE)
-        self._run_action(wrapped, self._replay_status)
+            self.Layout()
+
+        self._run_action(wrapped)
 
     def _on_replay_toggle(self, _event: wx.CommandEvent) -> None:
         self._run_replay_action(self.replay.toggle)
 
+    def _on_replay_start(self, _event: wx.CommandEvent) -> None:
+        def action() -> None:
+            self.replay.pause()
+            self.replay.seek(0)
+
+        self._run_replay_action(action)
+
     def _on_replay_back(self, _event: wx.CommandEvent) -> None:
-        self._run_replay_action(self.replay.step_back, "Moved back one operation")
+        self._run_replay_action(self.replay.step_back)
 
     def _on_replay_forward(self, _event: wx.CommandEvent) -> None:
-        self._run_replay_action(self.replay.step_forward, "Applied next operation")
+        self._run_replay_action(self.replay.step_forward)
 
     def _on_replay_note(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
             self.replay.pause()
-            path = self.replay.note()
+            self.replay.note()
             self._sync_replay_controls()
-            self._replay_status(f"Marked replay step {self.replay.position} as {path.name}", ORANGE)
+            self.Layout()
 
-        self._run_action(action, self._replay_status)
+        self._run_action(action)
 
     def _on_replay_seek(self) -> None:
         target = self.replay_slider.GetValue()
@@ -1265,44 +1299,32 @@ class KiLogWindow(wx.Frame):
 
     def _on_record_seek(self) -> None:
         target = min(self.record_slider.GetValue(), self.recorder.event_count)
+
         def action() -> None:
-            position = self.recorder.preview(target)
-            self._sync_record_controls()
-            if self.recorder.preview_position is None:
-                self._status("Returned to the current recorded position", ORANGE)
-            else:
-                self._status(
-                    f"Previewing position {position} · Stop keeps this position",
-                    ORANGE,
-                )
+            self.recorder.preview(target)
+            self._refresh_record()
 
         self._run_action(action)
 
-    def _preview_record_position(self, target: int, status: str) -> None:
+    def _preview_record_position(self, target: int) -> None:
         def action() -> None:
-            position = self.recorder.preview(target)
-            self._sync_record_controls()
-            self._status(f"{status} · position {position}", ORANGE)
+            self.recorder.preview(target)
+            self._refresh_record()
 
         self._run_action(action)
 
     def _on_record_back(self, _event: wx.CommandEvent) -> None:
-        self._preview_record_position(self.record_slider.GetValue() - 1, "Moved back")
+        self._preview_record_position(self.record_slider.GetValue() - 1)
 
     def _on_record_forward(self, _event: wx.CommandEvent) -> None:
-        self._preview_record_position(self.record_slider.GetValue() + 1, "Moved forward")
+        self._preview_record_position(self.record_slider.GetValue() + 1)
 
     def _on_record_reset(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
-            position = self.recorder.preview_position
-            if position is None:
+            if self.recorder.preview_position is None:
                 return
-            path = self.recorder.confirm_preview()
-            self._sync_record_controls()
-            self._status(
-                f"Reset at position {position} · continuing · updated {path.name}",
-                ORANGE,
-            )
+            self.recorder.confirm_preview()
+            self._refresh_record()
             wx.CallAfter(self._pcb_window.activate)
 
         self._run_action(action)
@@ -1310,7 +1332,6 @@ class KiLogWindow(wx.Frame):
     def _on_speed(self) -> None:
         speeds = (0.25, 0.5, 1.0, 2.0, 4.0)
         self.replay.set_speed(speeds[self.speed_choice.GetSelection()])
-        self._replay_status(f"Replay speed {self.speed_choice.GetStringSelection()}", ORANGE)
 
     def _on_fill_board(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
@@ -1322,18 +1343,21 @@ class KiLogWindow(wx.Frame):
                 )
                 if checkbox.GetValue()
             )
-            count = self.recorder.adapter.fill_board_copper(
+            self.recorder.adapter.fill_board_copper(
                 self.copper_net_entry.GetValue(),
                 layers,
             )
-            net_name = self.copper_net_entry.GetValue().strip()
-            self._skill_status(f"Created and filled {count} {net_name} zone(s)")
 
-        self._run_action(action, self._skill_status)
+        self._run_action(action)
 
-    def _skill_status(self, text: str, _colour: str = ORANGE) -> None:
-        _ = text
-        self.Layout()
+    def _on_fanout(self, _event: wx.CommandEvent) -> None:
+        def action() -> None:
+            self.recorder.adapter.fanout_net(
+                self.fanout_net_entry.GetValue().strip(),
+                self.fanout_width_entry.GetValue(),
+            )
+
+        self._run_action(action)
 
     def _on_poll(self, _event: wx.TimerEvent) -> None:
         self._sync_pcb_hotkeys()
@@ -1345,25 +1369,20 @@ class KiLogWindow(wx.Frame):
             if self.recorder.recording:
                 event = self.recorder.poll()
                 if event:
-                    log_name = self.recorder.log_path.name if self.recorder.log_path else "log"
-                    self._status(f"Saved event #{event['sequence']:02d} to {log_name}", ORANGE)
+                    self._refresh_record()
             if self.replay.playing and self.replay.tick():
                 self._sync_replay_controls()
-                if self.replay.position >= self.replay.total:
-                    self._replay_status("Replay complete", ORANGE)
+                self.Layout()
         except Exception as exc:
             lowered = str(exc).lower()
             if "busy" in lowered or "timeout" in lowered:
-                if self.replay.playing and not self.recorder.recording:
-                    self._replay_status("Waiting for KiCad to finish the active tool…", ORANGE)
-                else:
-                    self._status("Waiting for KiCad to finish the active tool…", ORANGE)
+                return
             elif self.replay.log is not None and not self.recorder.recording:
                 self.replay.pause()
                 self._sync_replay_controls()
-                self._replay_status(f"Replay paused: {exc}", RED)
+                self.Layout()
             else:
-                self._status(f"Temporary recording error: {exc}", RED)
+                self._refresh_record()
 
     def _move_to_pcb_bottom_left(self) -> None:
         if self.speed_choice.popup_open:

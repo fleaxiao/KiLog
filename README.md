@@ -4,67 +4,99 @@
 
 # KiLog
 
-KiLog is a KiCad 9/10 PCB Editor plugin that records live, unsaved board changes through the IPC API.
+KiLog is a KiCad 9/10 PCB Editor plugin for recording unsaved board changes,
+replaying them from JSON, and applying a small set of board-editing helpers. It
+communicates with the active PCB Editor through KiCad's IPC API.
 
-## Usage
+## Features
 
-The UI has one file-prefix field. With the default prefix `ref`, KiLog writes files next to the open PCB:
+- Record live PCB edits as UUID-addressed JSON operations.
+- Preview, undo, truncate, and mark positions in a recording.
+- Replay a log step by step or at `0.25×`–`4×` speed.
+- Create full-board copper zones on `F.Cu`, `B.Cu`, or both.
+- Fan out matching SMD pads with orthogonal traces and through vias.
 
-- `ref.json` — accumulated changes; its basename exactly matches the Record
-  tab's **Log** value
-- `ref_00.kicad_pcb`, `ref_01.kicad_pcb`, ... — marked PCB states; the number is
-  the state's actual position in the recorded operation sequence
+## Installation
 
-If the log already exists, KiLog asks whether to overwrite it. Choosing **Yes**
-replaces the JSON and starts a new recording; choosing **No** leaves the existing
-file untouched and does not start recording.
+Copy this repository to the KiCad plugin directory:
 
-- The orange centre control restores the PCB to its last saved on-disk state,
-  starts recording from that initial state, and changes to **Stop** while active.
-- **Back / Next** previews one recorded position. Stopping while previewing keeps
-  the selected position and removes later operations from the log.
-- While previewing, **Reset** discards all later operations, makes the displayed
-  PCB state the new recording baseline, and continues the same recording session.
-- The rightmost **Mark** control saves the current recorded position as a PCB snapshot.
-- Drag the Record progress bar to preview any captured PCB state.
-- **Ctrl+Z** confirms a preview, or reverts the latest change when no preview is active.
+- Windows: `%USERPROFILE%\Documents\KiCad\<version>\plugins\KiLog`
+- macOS: `~/Documents/KiCad/<version>/plugins/KiLog`
+- Linux: `~/.local/share/KiCad/<version>/plugins/KiLog`
+
+In PCB Editor, enable the IPC API under **Preferences > Plugins**, then reload
+the plugins or restart PCB Editor. Open a board before launching KiLog.
+
+## Record
+
+The **Log** field controls the output prefix. If it contains `ref`, files are
+written beside the open PCB as:
+
+- `ref.json` — the operation log.
+- `ref_00.kicad_pcb`, `ref_01.kicad_pcb`, … — marked board states, numbered by
+  their actual position in the operation sequence.
+
+The centre button first restores the open PCB to its last saved on-disk state,
+then starts recording. It changes to **Stop** while recording. If the JSON file
+already exists, KiLog asks before replacing it.
+
+While recording:
+
+- **Back / Next** previews recorded positions.
+- Dragging the progress bar seeks to a recorded position.
+- **Reset** accepts the preview, removes all later operations, and continues
+  recording from that state.
+- **Stop** also accepts the currently previewed position before ending.
+- **Mark** saves the current position as a `.kicad_pcb` copy.
+- **Ctrl+Z** accepts a preview, or removes the latest operation when no preview
+  is active.
 
 ## Replay
 
-Click **Load JSON** and choose a KiLog log file. KiLog immediately restores the PCB
-referenced by `initial_pcb_path` to its last saved on-disk state and applies each
-UUID-addressed operation directly in PCB Editor. Unsaved PCB edits are discarded by
-this reset, so save any work that is unrelated to the replay first.
+Choose **Load** on the Replay tab and select a KiLog JSON file. KiLog restores
+the PCB named by `initial_pcb_path` to its saved state before applying the log.
 
-- **Play / Pause** controls automatic fixed-step playback.
-- **Back / Next** moves one recorded step.
-- Drag the progress bar to seek to any operation.
-- Choose `0.25×` through `4×` playback speed.
-- Use the rightmost **Mark** control to save the current replay position with the
-  same position-based PCB filename used while recording.
+> **Warning:** loading a replay discards unsaved edits in the open PCB. Save
+> unrelated work first, and open the PCB referenced by the log.
 
-Seeking backward resets the PCB to the saved initial state captured when the log was loaded, then
-replays up to the requested operation. For reliable results, open the PCB named by
-`initial_pcb_path` before loading its log. Playback changes are committed to KiCad's
-undo stack and are not saved to disk automatically.
+Replay controls provide reset-to-start, previous, play/pause, next, and mark.
+The progress bar seeks to any step. Seeking backward restores a cached earlier
+state; playback changes are placed on KiCad's undo stack but are not saved to
+disk automatically.
 
-## Skills
+## Board helpers
 
-The **Skill** tab can create copper zones covering the closed `Edge.Cuts` board
-outline. Enter an existing network name (default `GND`) and select `F.Cu`, `B.Cu`,
-or both, then click **Fill Board**. Each layer receives its own zone and KiCad
-refills all zones after creating one undoable board commit. When Record is active,
-the zones are stored as `zone.add` operations and can be recreated by Replay.
+### Copper zones
+
+On the **Skill** tab, enter an existing net, select `F.Cu`, `B.Cu`, or both, and
+choose **Fill**. KiLog creates one full-board zone per selected layer in a single
+undoable commit. The zones are intentionally left unfilled; refill them in
+KiCad when ready. Active recording captures them as `zone.add` operations.
+
+### Fanout
+
+Enter an existing net and a fallback track width in millimetres, then choose
+**Fanout**. For each matching on-board SMD pad, KiLog creates an orthogonal trace
+and a 0.6/0.3 mm through via in one undoable commit.
+
+Fanout behavior:
+
+- Front-side footprints use `F.Cu`; back-side footprints use `B.Cu`.
+- A connected same-net trace supplies the width; otherwise the UI value is used.
+- Vias stay inside the closed `Edge.Cuts` outline and outside cut-outs.
+- Placement avoids other on-board pads and existing vias.
+- Pads already connected to a same-net via are skipped, so repeated runs do not
+  duplicate completed fanouts.
 
 ## Log format
 
-The log contains the initial PCB path and recorded changes. Every change includes
-`record_step`; changes captured in the same Record event share the same value and
-Replay applies them together as one displayed step. Footprint placement, movement,
-and rotation are all stored as `footprint.move`. Only the latest position and final
-angle are retained.
+Each change has a `record_step`. Changes captured together share the same step
+and are replayed as one displayed position. Footprint placement, movement, and
+rotation are stored as `footprint.move`; consecutive transforms keep only the
+latest position and angle.
 
-Footprints outside the live `Edge.Cuts` boundary are ignored. Moving a footprint into the board creates a `footprint.move` entry; moving it outside does not store its outside position.
+Footprints outside the live `Edge.Cuts` boundary are ignored. Moving a footprint
+into the board is recorded; moving it out does not preserve the outside position.
 
 ```json
 {
@@ -82,20 +114,26 @@ Footprints outside the live `Edge.Cuts` boundary are ignored. Moving a footprint
 }
 ```
 
-## Installation
+The schema is available at
+[`kilog/schemas/operation-log-v1.schema.json`](kilog/schemas/operation-log-v1.schema.json).
 
-Place this repository in the KiCad plugin directory:
+## Project layout
 
-- Windows: `%USERPROFILE%\Documents\KiCad\<version>\plugins\KiLog`
-- macOS: `~/Documents/KiCad/<version>/plugins/KiLog`
-- Linux: `~/.local/share/KiCad/<version>/plugins/KiLog`
-
-Enable the IPC API under **PCB Editor > Preferences > Plugins**, then reload or restart PCB Editor.
+- `kilog_action.py` — KiCad entry point and DPI bootstrap.
+- `kilog/recorder.py` — recording state and log persistence.
+- `kilog/replay.py` — log validation and playback controller.
+- `kilog/kicad_adapter.py` — KiCad IPC reads, writes, and board helpers.
+- `kilog/ui.py` — wxPython control panel.
+- `tests/` — unit tests using fake board adapters.
 
 ## Development
+
+Requires Python 3.10 or newer.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.

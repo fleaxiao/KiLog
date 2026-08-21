@@ -39,6 +39,8 @@ class BoardAdapter(Protocol):
 
     def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int: ...
 
+    def fanout_net(self, net_name: str, default_width_mm: float | str = 0.5) -> int: ...
+
     def undo_to(self, target: BoardSnapshot) -> tuple[BoardSnapshot, str]: ...
 
     def restore_snapshot(self, target: BoardSnapshot, description: str = "") -> BoardSnapshot: ...
@@ -51,12 +53,6 @@ class RecorderConfig:
     overwrite_existing: bool = False
 
 
-@dataclass(frozen=True)
-class HistoryEntry:
-    before: BoardSnapshot
-    path: Path
-
-
 class Recorder:
     def __init__(self, adapter: BoardAdapter):
         self.adapter = adapter
@@ -66,10 +62,9 @@ class Recorder:
         self.baseline: BoardSnapshot | None = None
         self.pending: BoardSnapshot | None = None
         self.pending_since = 0.0
-        self.history: list[HistoryEntry] = []
+        self.history: list[BoardSnapshot] = []
         self.events: list[dict] = []
         self.log_path: Path | None = None
-        self.log_counter = 1
         self.preview_position: int | None = None
 
     @property
@@ -113,7 +108,6 @@ class Recorder:
         self.baseline = baseline
         self.pending = None
         self.history.clear()
-        self.log_counter = 1
         self.preview_position = None
         self.recording = True
         return self.baseline
@@ -182,7 +176,7 @@ class Recorder:
         event = build_event(
             self.baseline,
             current,
-            sequence=self.log_counter,
+            sequence=self.event_count + 1,
             session_uuid=self.session_uuid,
         )
         self.pending = None
@@ -192,11 +186,11 @@ class Recorder:
         assert self.log_path is not None
         coalesce = self._can_coalesce_transform(event)
         if coalesce:
-            original = self.history[-1].before
+            original = self.history[-1]
             merged = build_event(
                 original,
                 current,
-                sequence=self.log_counter - 1,
+                sequence=self.event_count,
                 session_uuid=self.session_uuid,
             )
             assert merged is not None
@@ -207,8 +201,7 @@ class Recorder:
         write_json_atomic(self.log_path, self._log_document(self.baseline, events))
         self.events = events
         if not coalesce:
-            self.history.append(HistoryEntry(self.baseline, self.log_path))
-            self.log_counter += 1
+            self.history.append(self.baseline)
         self.baseline = current
         return event
 
@@ -286,7 +279,7 @@ class Recorder:
         if self.preview_position is None:
             self.flush()
         target = max(0, min(int(position), len(self.history)))
-        snapshot = self.baseline if target == len(self.history) else self.history[target].before
+        snapshot = self.baseline if target == len(self.history) else self.history[target]
         restored = self.adapter.restore_snapshot(
             snapshot,
             f"KiLog: preview recorded position {target}",
@@ -302,7 +295,7 @@ class Recorder:
         if self.preview_position is None:
             raise RecorderError("Choose an earlier record position first.")
         target = self.preview_position
-        snapshot = self.history[target].before
+        snapshot = self.history[target]
         current = self.adapter.snapshot()
         if current.fingerprint != snapshot.fingerprint:
             raise RecorderError("The PCB no longer matches the selected record preview.")
@@ -315,16 +308,15 @@ class Recorder:
         self.events = remaining_events
         del self.history[target:]
         self.baseline = snapshot
-        self.log_counter = target + 1
         self.preview_position = None
         return self.log_path
 
     def _undo_last(self) -> tuple[Path, str]:
         if not self.history:
             raise RecorderError("There are no recorded operations to undo.")
-        entry = self.history[-1]
-        restored, strategy = self.adapter.undo_to(entry.before)
-        if restored.fingerprint != entry.before.fingerprint:
+        target = self.history[-1]
+        restored, strategy = self.adapter.undo_to(target)
+        if restored.fingerprint != target.fingerprint:
             log_name = self.log_path.name if self.log_path else "the log file"
             raise RecorderError(f"KiCad could not be restored; {log_name} was left unchanged.")
         assert self.log_path is not None
@@ -332,7 +324,7 @@ class Recorder:
         try:
             write_json_atomic(
                 self.log_path,
-                self._log_document(entry.before, remaining_events),
+                self._log_document(target, remaining_events),
             )
         except OSError as exc:
             self.baseline = restored
@@ -342,8 +334,7 @@ class Recorder:
         self.events = remaining_events
         self.history.pop()
         self.baseline = restored
-        self.log_counter -= 1
-        return entry.path, strategy
+        return self.log_path, strategy
 
     def end(self) -> dict | None:
         if not self.recording:

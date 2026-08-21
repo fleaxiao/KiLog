@@ -5,21 +5,16 @@ import json
 import pytest
 
 from kilog.storage import (
-    next_counter,
     normalize_stem,
-    numbered_path,
     snapshot_path,
     write_json_atomic,
     write_json_new,
 )
 
 
-def test_filename_normalization_and_counter(tmp_path):
+def test_filename_normalization_and_snapshot_path(tmp_path):
     assert normalize_stem(" ref.kicad_pcb ", ".kicad_pcb") == "ref"
     assert normalize_stem("记录.json", ".json") == "记录"
-    (tmp_path / "log_000003.json").write_text("{}", encoding="utf-8")
-    assert next_counter(tmp_path, "log", ".json") == 4
-    assert numbered_path(tmp_path, "ref", 4, ".kicad_pcb").name == "ref_04.kicad_pcb"
     assert snapshot_path(tmp_path, "ref", 12).name == "ref_12.kicad_pcb"
 
 

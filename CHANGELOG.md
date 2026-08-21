@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Simplify recorder history state and remove unused storage/replay APIs.
+- Remove obsolete no-op status plumbing from the compact UI.
+- Reorganize the README around installation, workflows, safety, and development.
 - Make the repository root the live KiCad plugin directory for restart-to-update development.
 - Remove PCM metadata, ZIP artifacts, and package build tooling.
 

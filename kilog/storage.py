@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import re
 from typing import Any
 
 
@@ -30,26 +29,11 @@ def normalize_stem(value: str, suffix: str) -> str:
     return stem
 
 
-def next_counter(directory: Path, stem: str, suffix: str) -> int:
-    pattern = re.compile(rf"^{re.escape(stem)}_(\d+){re.escape(suffix)}$", re.IGNORECASE)
-    highest = 0
-    if directory.exists():
-        for child in directory.iterdir():
-            match = pattern.match(child.name)
-            if match:
-                highest = max(highest, int(match.group(1)))
-    return highest + 1
-
-
-def numbered_path(directory: Path, stem: str, counter: int, suffix: str) -> Path:
-    return directory / f"{stem}_{counter:02d}{suffix}"
-
-
 def snapshot_path(directory: Path, stem: str, position: int) -> Path:
     """Return the PCB snapshot name for an exact position in the recorded log."""
     if position < 0:
         raise ValueError("The recorded position cannot be negative.")
-    return numbered_path(directory, stem, position, ".kicad_pcb")
+    return directory / f"{stem}_{position:02d}.kicad_pcb"
 
 
 def write_json_new(path: Path, value: dict[str, Any]) -> None:

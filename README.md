@@ -33,7 +33,7 @@ The **Log** field controls the output prefix. If it contains `ref`, files are
 written beside the open PCB as:
 
 - `ref.json` — the operation log.
-- `ref_00.kicad_pcb`, `ref_01.kicad_pcb`, … — marked board states, numbered by
+- `ref_000.kicad_pcb`, `ref_001.kicad_pcb`, … — marked board states, numbered by
   their actual position in the operation sequence.
 
 The centre button first restores the open PCB to its last saved on-disk state,

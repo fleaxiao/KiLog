@@ -33,7 +33,7 @@ def snapshot_path(directory: Path, stem: str, position: int) -> Path:
     """Return the PCB snapshot name for an exact position in the recorded log."""
     if position < 0:
         raise ValueError("The recorded position cannot be negative.")
-    return directory / f"{stem}_{position:02d}.kicad_pcb"
+    return directory / f"{stem}_{position:03d}.kicad_pcb"
 
 
 def write_json_new(path: Path, value: dict[str, Any]) -> None:

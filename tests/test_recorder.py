@@ -81,7 +81,7 @@ def test_note_flushes_change_and_saves_live_copy(tmp_path):
     note_path = recorder.note()
 
     assert (tmp_path / "ref.json").exists()
-    assert note_path == tmp_path / "ref_01.kicad_pcb"
+    assert note_path == tmp_path / "ref_001.kicad_pcb"
     assert note_path.read_text(encoding="utf-8") == "(kicad_pcb)"
 
 
@@ -98,7 +98,7 @@ def test_note_name_uses_step_when_one_step_has_multiple_changes(tmp_path):
 
     assert recorder.event_count == 1
     assert recorder.recorded_position == 1
-    assert note_path.name == "ref_01.kicad_pcb"
+    assert note_path.name == "ref_001.kicad_pcb"
 
 
 def test_note_at_same_recorded_position_does_not_overwrite(tmp_path):
@@ -109,7 +109,7 @@ def test_note_at_same_recorded_position_does_not_overwrite(tmp_path):
     with pytest.raises(RecorderError, match="position 0 is already marked"):
         recorder.note()
 
-    assert first.name == "ref_00.kicad_pcb"
+    assert first.name == "ref_000.kicad_pcb"
 
 
 def test_full_board_copper_zones_are_recorded_for_replay(tmp_path):

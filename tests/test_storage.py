@@ -15,7 +15,8 @@ from kilog.storage import (
 def test_filename_normalization_and_snapshot_path(tmp_path):
     assert normalize_stem(" ref.kicad_pcb ", ".kicad_pcb") == "ref"
     assert normalize_stem("记录.json", ".json") == "记录"
-    assert snapshot_path(tmp_path, "ref", 12).name == "ref_12.kicad_pcb"
+    assert snapshot_path(tmp_path, "ref", 12).name == "ref_012.kicad_pcb"
+    assert snapshot_path(tmp_path, "ref", 999).name == "ref_999.kicad_pcb"
 
 
 @pytest.mark.parametrize("name", ["", "../log", "a/b", "CON", "bad:name"])

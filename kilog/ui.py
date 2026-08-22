@@ -21,6 +21,7 @@ SLIDER_TRACK = "#28513F"
 TAB_FONT_SIZE = 8
 UI_FONT_SIZE = 8
 META_FONT_SIZE = 8
+POSITION_COUNTER_PLACEHOLDER = "999/999"
 
 
 class UnderlinedTextField(wx.Panel):
@@ -692,6 +693,9 @@ class KiLogWindow(wx.Frame):
         )
         self.counter_text.SetForegroundColour(ORANGE)
         self.counter_text.SetFont(self._font(META_FONT_SIZE, mono=True))
+        counter_width, _ = self.counter_text.GetTextExtent(POSITION_COUNTER_PLACEHOLDER)
+        counter_height = self.counter_text.GetBestSize().GetHeight()
+        self.counter_text.SetMinSize(wx.Size(counter_width, counter_height))
         self.counter_text.SetToolTip("Record position 0 of 0")
         record_progress_row.Add(self.record_slider, 1, wx.ALIGN_CENTER_VERTICAL)
         record_progress_row.Add(
@@ -823,6 +827,11 @@ class KiLogWindow(wx.Frame):
         )
         self.replay_position_text.SetForegroundColour(ORANGE)
         self.replay_position_text.SetFont(self._font(META_FONT_SIZE, mono=True))
+        counter_width, _ = self.replay_position_text.GetTextExtent(
+            POSITION_COUNTER_PLACEHOLDER
+        )
+        counter_height = self.replay_position_text.GetBestSize().GetHeight()
+        self.replay_position_text.SetMinSize(wx.Size(counter_width, counter_height))
         replay_progress_row.Add(self.replay_slider, 1, wx.ALIGN_CENTER_VERTICAL)
         replay_progress_row.Add(
             self.replay_position_text,
@@ -1128,9 +1137,9 @@ class KiLogWindow(wx.Frame):
             self.recorder.recording and self.recorder.preview_position is not None
         )
         self.counter_text.SetLabel(f"{position}/{count}")
-        self.counter_text.SetMinSize(wx.DefaultSize)
-        self.counter_text.SetMinSize(self.counter_text.GetBestSize())
         self.counter_text.SetToolTip(f"Record position {position} of {count}")
+        self.counter_text.GetParent().Layout()
+        self.mode_tabs.Layout()
 
     def _sync_replay_controls(self) -> None:
         loaded = self.replay.log is not None
@@ -1140,8 +1149,6 @@ class KiLogWindow(wx.Frame):
         self.replay_slider.SetValue(self.replay.position)
         position_label = f"{self.replay.position}/{self.replay.total}"
         self.replay_position_text.SetLabel(position_label)
-        self.replay_position_text.SetMinSize(wx.DefaultSize)
-        self.replay_position_text.SetMinSize(self.replay_position_text.GetBestSize())
         self.replay_position_text.SetToolTip(
             f"Replay step {self.replay.position} of {self.replay.total}"
         )

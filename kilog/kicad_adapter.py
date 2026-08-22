@@ -15,6 +15,7 @@ from kipy.board_types import (
     BoardTextBox,
     BoardLayer,
     Dimension,
+    Footprint3DModel,
     FootprintInstance,
     PadType,
     Track,
@@ -710,7 +711,18 @@ class KiCadBoardAdapter:
         if position is not None:
             footprint.position = cls._replay_position(position)
         if orientation is not None:
+            # kicad-python 0.7.1 rebuilds ``definition.items`` in the
+            # FootprintInstance orientation setter but omits 3D models from
+            # the rebuilt list.  Preserve them across rotation so replaying a
+            # footprint transform does not sever its 3D model associations.
+            models = [
+                item
+                for item in footprint.definition.items
+                if isinstance(item, Footprint3DModel)
+            ]
             footprint.orientation = cls._replay_orientation(orientation)
+            for model in models:
+                footprint.definition.add_item(model)
 
     def _state_for_replay_item(self, item) -> ItemState:
         proto = item.proto

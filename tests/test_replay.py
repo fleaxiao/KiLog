@@ -323,7 +323,7 @@ def test_replay_note_name_uses_current_recorded_position(tmp_path):
 
     note_path = replay.note()
 
-    assert note_path == tmp_path / "ref_03.kicad_pcb"
+    assert note_path == tmp_path / "ref_003.kicad_pcb"
     assert adapter.saved == [note_path]
 
 

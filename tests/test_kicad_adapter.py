@@ -6,6 +6,7 @@ import pytest
 from kipy.board_types import (
     BoardLayer,
     BoardSegment,
+    Footprint3DModel,
     FootprintInstance,
     Net,
     Pad,
@@ -161,6 +162,25 @@ def test_replay_footprint_transform_moves_anchor_and_child_fields():
     assert footprint.orientation.degrees == 90
     # This is the behavior direct ParseDict misses: kipy moves footprint children too.
     assert footprint.reference_field.text.position != old_reference
+
+
+def test_replay_footprint_rotation_preserves_3d_models():
+    footprint = FootprintInstance()
+    model = Footprint3DModel()
+    model.filename = "${KICAD10_3DMODEL_DIR}/Package.step"
+    footprint.definition.add_item(model)
+
+    KiCadBoardAdapter._apply_footprint_transform(
+        footprint,
+        {
+            "position": {"x_nm": "6000000", "y_nm": "9000000"},
+            "orientation": {"value_degrees": 90},
+        },
+    )
+
+    assert [item.filename for item in footprint.definition.models] == [
+        "${KICAD10_3DMODEL_DIR}/Package.step"
+    ]
 
 
 def test_prepare_replay_reverts_matching_board_to_saved_state(tmp_path, monkeypatch):

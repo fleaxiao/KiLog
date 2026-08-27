@@ -142,7 +142,7 @@ class Recorder:
 
     @staticmethod
     def _persisted_change(change: dict) -> dict | None:
-        if change.get("item_kind") == "footprint":
+        if change.get("operation") == "footprint.move":
             transform = change.get("after")
             if not isinstance(transform, dict):
                 return None

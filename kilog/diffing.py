@@ -8,6 +8,12 @@ from uuid import uuid4
 from .model import BoardSnapshot, ItemState, utc_now
 
 
+FOOTPRINT_SILK_FIELD_NAMES = (
+    "reference_field",
+    "value_field",
+)
+
+
 def _pointer_token(value: str) -> str:
     return value.replace("~", "~0").replace("/", "~1")
 
@@ -352,6 +358,27 @@ def build_event(
                 if before_transform != after_transform:
                     changes.append(
                         _footprint_transform_change(old, new, pointer, "footprint.move")
+                    )
+                else:
+                    before_fields = {
+                        name: old.data[name]
+                        for name in FOOTPRINT_SILK_FIELD_NAMES
+                        if name in old.data
+                    }
+                    after_fields = {
+                        name: new.data[name]
+                        for name in FOOTPRINT_SILK_FIELD_NAMES
+                        if name in new.data
+                    }
+                    changes.extend(
+                        _field_changes(
+                            before_fields,
+                            after_fields,
+                            f"{pointer}/data",
+                            item_uuid,
+                            kind,
+                            "footprint.field.modify",
+                        )
                     )
             else:
                 operation = _semantic_operation(kind, "replace", old.data, new.data)

@@ -80,6 +80,39 @@ def test_footprint_move_omits_derived_fields_and_large_definition_arrays():
     }
 
 
+def test_independent_footprint_reference_move_is_recorded():
+    before = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={
+                "text": {"text": {"position": {"x_nm": "110", "y_nm": "210"}}}
+            },
+        )
+    )
+    after = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={
+                "text": {"text": {"position": {"x_nm": "160", "y_nm": "260"}}}
+            },
+        )
+    )
+
+    event = build_event(before, after, 1, "session")
+
+    assert event is not None
+    assert event["summary"]["operations"] == {"footprint.field.modify": 2}
+    assert [change["path"] for change in event["changes"]] == [
+        "/items/fp-1/data/reference_field/text/text/position/x_nm",
+        "/items/fp-1/data/reference_field/text/text/position/y_nm",
+    ]
+    assert [change["after"] for change in event["changes"]] == ["160", "260"]
+
+
 def test_equal_length_lists_are_diffed_at_leaf_values():
     before = snapshot(item("zone-1", "zone", outline=[{"x": 1}, {"x": 2}]))
     after = snapshot(item("zone-1", "zone", outline=[{"x": 1}, {"x": 3}]))

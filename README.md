@@ -83,7 +83,8 @@ Fanout behavior:
 
 - Front-side footprints use `F.Cu`; back-side footprints use `B.Cu`.
 - A connected same-net trace supplies the width; otherwise the UI value is used.
-- Vias stay inside the closed `Edge.Cuts` outline and outside cut-outs.
+- Via copper stays at least 0.2 mm from the closed `Edge.Cuts` outline and
+  internal cut-outs.
 - Placement avoids other on-board pads and existing vias.
 - Pads already connected to a same-net via are skipped, so repeated runs do not
   duplicate completed fanouts.
@@ -94,6 +95,8 @@ Changes captured together are stored under one step and replayed as one atomic
 KiCad commit, without exposing intermediate object states. Footprint placement, movement, and
 rotation are stored as `footprint.move`; consecutive transforms keep only the
 latest position and angle.
+Independent moves and edits of footprint Reference and Value fields are stored
+as `footprint.field.modify` changes and replayed without moving the footprint anchor.
 
 Persisted changes describe only their replay target: complete additions use
 `item` with the exact KiCad `type` and `data` (including `data.id.value`), field

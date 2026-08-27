@@ -164,6 +164,31 @@ def test_replay_footprint_transform_moves_anchor_and_child_fields():
     assert footprint.reference_field.text.position != old_reference
 
 
+def test_replay_independent_footprint_reference_move_preserves_anchor():
+    footprint = with_id(FootprintInstance(), "fp-1")
+    footprint.position = Vector2.from_xy(1_000_000, 2_000_000)
+    footprint.reference_field.text.position = Vector2.from_xy(1_100_000, 2_100_000)
+    adapter = KiCadBoardAdapter(object(), FakeBoard([footprint]))
+    states = {"fp-1": adapter._state_for_replay_item(adapter._clone_item(footprint))}
+
+    adapter._apply_change_to_states(
+        states,
+        {
+            "item_uuid": "fp-1",
+            "operation": "footprint.field.modify",
+            "path": "/items/fp-1/data/reference_field/text/text/position/x_nm",
+            "value": "1600000",
+        },
+    )
+
+    replayed = states["fp-1"].raw_item
+    assert (replayed.position.x, replayed.position.y) == (1_000_000, 2_000_000)
+    assert (replayed.reference_field.text.position.x, replayed.reference_field.text.position.y) == (
+        1_600_000,
+        2_100_000,
+    )
+
+
 def test_replay_footprint_rotation_preserves_3d_models():
     footprint = FootprintInstance()
     model = Footprint3DModel()
@@ -306,6 +331,40 @@ def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
     assert via.position.x == pad.position.x or via.position.y == pad.position.y
     assert 500_000 <= via.position.x <= 19_500_000
     assert 500_000 <= via.position.y <= 19_500_000
+
+
+def test_fanout_via_clears_board_edge_by_at_least_point_two_mm():
+    footprint = with_id(FootprintInstance(), "fp-near-edge")
+    footprint.position = Vector2.from_xy(2_400_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    pad = Pad()
+    pad.position = Vector2.from_xy(1_400_000, 10_000_000)
+    pad.net = Net(name="GND")
+    pad.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(pad)
+    board = FillBoard(
+        [
+            footprint,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    count = KiCadBoardAdapter(object(), board).fanout_net("GND")
+
+    assert count == 1
+    via = board.created[1]
+    # The preferred outward candidate has its center inside the board at x=0.4 mm,
+    # but its 0.6 mm via would leave only 0.1 mm to Edge.Cuts and must be rejected.
+    assert (via.position.x, via.position.y) != (400_000, 10_000_000)
+    assert min(
+        via.position.x,
+        via.position.y,
+        20_000_000 - via.position.x,
+        20_000_000 - via.position.y,
+    ) >= 500_000
 
 
 def test_fanout_ignores_components_outside_board():

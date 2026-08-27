@@ -71,6 +71,28 @@ def test_persisted_field_changes_use_target_only_format():
     }
 
 
+def test_persisted_footprint_field_move_uses_field_target_format():
+    persisted = Recorder._persisted_change(
+        {
+            "change_uuid": "change-1",
+            "item_uuid": "fp-1",
+            "item_kind": "footprint",
+            "operation": "footprint.field.modify",
+            "op": "replace",
+            "path": "/items/fp-1/data/reference_field/text/text/position/x_nm",
+            "before": "110",
+            "after": "160",
+        }
+    )
+
+    assert persisted == {
+        "id": "fp-1",
+        "operation": "footprint.field.modify",
+        "path": "/items/fp-1/data/reference_field/text/text/position/x_nm",
+        "value": "160",
+    }
+
+
 def test_note_flushes_change_and_saves_live_copy(tmp_path):
     initial = snapshot()
     routed = snapshot(item("track-1", "track", width=250000))

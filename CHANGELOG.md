@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Continue a replay as a recording from its current step, truncating later steps.
+- Prevent fanout traces and vias from touching existing traces on other nets.
+- Prefer F.SilkS or F.Fab magnetic body outlines, with pad geometry as fallback.
+- Close KiLog automatically when its associated PCB Editor window closes.
+- Keep fanout via copper at least 0.4 mm from board edges and internal cut-outs.
 - Record and replay independent footprint Reference and Value field moves.
 - Store recordings as UUID-addressed grouped steps with target-only values and replay every step as one atomic KiCad commit.
 - Simplify recorder history state and remove unused storage/replay APIs.

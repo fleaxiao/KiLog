@@ -12,6 +12,7 @@ from .window_position import PcbEditorWindow, WindowRect, bottom_left_position
 
 BG = "#14231E"
 PANEL = "#20352D"
+BRANCH_PANEL = "#29463A"
 FIELD = "#0E1C17"
 ORANGE = "#F2A33A"
 CREAM = "#F3F0E8"
@@ -370,6 +371,7 @@ class VectorIconButton(wx.Control):
         handler,
         tooltip: str,
         primary: bool = False,
+        tinted: bool = False,
     ):
         size = parent.FromDIP((52, 25))
         super().__init__(parent, size=size, style=wx.BORDER_NONE | wx.WANTS_CHARS)
@@ -379,6 +381,7 @@ class VectorIconButton(wx.Control):
         self._icon = icon
         self._handler = handler
         self._primary = primary
+        self._tinted = tinted
         self._pressed = False
         self.SetToolTip(tooltip)
         self.Bind(wx.EVT_PAINT, self._on_paint)
@@ -407,7 +410,7 @@ class VectorIconButton(wx.Control):
     def _on_paint(self, _event: wx.PaintEvent) -> None:
         dc = wx.AutoBufferedPaintDC(self)
         width, height = self.GetClientSize()
-        background = ORANGE if self._primary else PANEL
+        background = ORANGE if self._primary else BRANCH_PANEL if self._tinted else PANEL
         dc.SetBackground(wx.Brush(background))
         dc.Clear()
         graphics = wx.GraphicsContext.Create(dc)
@@ -468,6 +471,29 @@ class VectorIconButton(wx.Control):
             radius = float(self.FromDIP(5))
             graphics.DrawEllipse(
                 center_x - radius,
+                center_y - radius,
+                radius * 2,
+                radius * 2,
+            )
+        elif icon == "record_from_here":
+            branch_x = center_x - float(self.FromDIP(5))
+            end_x = center_x + float(self.FromDIP(5))
+            branch_y = center_y - float(self.FromDIP(4))
+            radius = float(self.FromDIP(3))
+            path = graphics.CreatePath()
+            path.MoveToPoint(branch_x, center_y + float(self.FromDIP(6)))
+            path.AddLineToPoint(branch_x, branch_y)
+            path.AddCurveToPoint(
+                branch_x,
+                center_y,
+                center_x,
+                center_y,
+                end_x - radius,
+                center_y,
+            )
+            graphics.StrokePath(path)
+            graphics.DrawEllipse(
+                end_x - radius,
                 center_y - radius,
                 radius * 2,
                 radius * 2,
@@ -576,6 +602,7 @@ class KiLogWindow(wx.Frame):
         self.replay = ReplayController(recorder.adapter)
         self.asset_directory = asset_directory
         self._pcb_window = PcbEditorWindow()
+        self._closing_after_pcb_exit = False
         self._position_poll_tick = 0
         self._pcb_hotkeys_registered = False
         self.SetBackgroundColour(BG)
@@ -851,9 +878,10 @@ class KiLogWindow(wx.Frame):
             replay_controls.AddGrowableCol(column, 1)
         self.replay_start_button = self._icon_button(
             replay_page,
-            "rewind",
-            self._on_replay_start,
-            "Return to the beginning",
+            "record_from_here",
+            self._on_replay_record,
+            "Continue recording from the current replay step",
+            tinted=True,
         )
         self.back_button = self._icon_button(
             replay_page,
@@ -929,7 +957,6 @@ class KiLogWindow(wx.Frame):
         copper_row.Add(layer_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         copper_row.Add(self.front_copper_check, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         copper_row.Add(self.back_copper_check, 0, wx.ALIGN_CENTER_VERTICAL)
-        skill_sizer.Add(copper_row, 0, wx.EXPAND | wx.ALL, 8)
         fanout_row = wx.BoxSizer(wx.HORIZONTAL)
         self.fanout_button = self._button(
             skill_page,
@@ -954,7 +981,13 @@ class KiLogWindow(wx.Frame):
         fanout_row.Add(self.fanout_net_entry, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         fanout_row.Add(fanout_width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         fanout_row.Add(self.fanout_width_entry, 0, wx.ALIGN_CENTER_VERTICAL)
-        skill_sizer.Add(fanout_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        skill_sizer.Add(fanout_row, 0, wx.EXPAND | wx.ALL, 8)
+        skill_sizer.Add(
+            copper_row,
+            0,
+            wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            8,
+        )
         skill_sizer.AddStretchSpacer()
         skill_sizer.AddSpacer(8)
         skill_page.SetSizer(skill_sizer)
@@ -1026,8 +1059,9 @@ class KiLogWindow(wx.Frame):
         handler,
         tooltip: str,
         primary: bool = False,
+        tinted: bool = False,
     ) -> VectorIconButton:
-        return VectorIconButton(parent, icon, handler, tooltip, primary)
+        return VectorIconButton(parent, icon, handler, tooltip, primary, tinted)
 
     def _mode_tab(self, parent: wx.Window, label: str, index: int) -> FlatTab:
         return FlatTab(
@@ -1154,9 +1188,7 @@ class KiLogWindow(wx.Frame):
         )
         self.play_button.SetIcon("pause" if self.replay.playing else "play")
         self.play_button.Enable(enabled and self.replay.total > 0)
-        self.replay_start_button.Enable(
-            enabled and (self.replay.position > 0 or self.replay.playing)
-        )
+        self.replay_start_button.Enable(enabled)
         self.back_button.Enable(enabled and self.replay.position > 0)
         self.forward_button.Enable(enabled and self.replay.position < self.replay.total)
         self.replay_note_button.Enable(enabled)
@@ -1277,12 +1309,16 @@ class KiLogWindow(wx.Frame):
     def _on_replay_toggle(self, _event: wx.CommandEvent) -> None:
         self._run_replay_action(self.replay.toggle)
 
-    def _on_replay_start(self, _event: wx.CommandEvent) -> None:
+    def _on_replay_record(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
-            self.replay.pause()
-            self.replay.seek(0)
+            branch = self.replay.branch()
+            self.recorder.resume(branch)
+            self.pcb_entry.editor.SetValue(branch.path.stem)
+            self._set_controls(True)
+            self._select_mode(0)
+            wx.CallAfter(self._pcb_window.activate)
 
-        self._run_replay_action(action)
+        self._run_action(action)
 
     def _on_replay_back(self, _event: wx.CommandEvent) -> None:
         self._run_replay_action(self.replay.step_back)
@@ -1367,6 +1403,10 @@ class KiLogWindow(wx.Frame):
         self._run_action(action)
 
     def _on_poll(self, _event: wx.TimerEvent) -> None:
+        if not self._pcb_window.is_open():
+            self._closing_after_pcb_exit = True
+            self.Close()
+            return
         self._sync_pcb_hotkeys()
         self._position_poll_tick += 1
         if self._position_poll_tick >= self.POSITION_POLL_TICKS:
@@ -1424,7 +1464,7 @@ class KiLogWindow(wx.Frame):
         self.timer.Stop()
         self.replay.pause()
         self._unregister_pcb_hotkeys()
-        if self.recorder.recording:
+        if self.recorder.recording and not self._closing_after_pcb_exit:
             try:
                 self.recorder.end()
             except Exception as exc:

@@ -5,7 +5,62 @@ import json
 import pytest
 
 from kilog.recorder import LogFileExistsError, Recorder, RecorderConfig, RecorderError
+from kilog.replay import ReplayController
+from tests.test_replay import ReplayAdapter, write_log
 from tests.helpers import FakeAdapter, item, snapshot
+
+
+def test_resume_from_replay_truncates_future_and_records_from_current_step(tmp_path):
+    path = tmp_path / "ref.json"
+    write_log(path, 3)
+    adapter = ReplayAdapter()
+    replay = ReplayController(adapter)
+    replay.load(path)
+    replay.seek(2)
+    recorder = Recorder(adapter)
+
+    recorder.resume(replay.branch())
+
+    truncated = json.loads(path.read_text(encoding="utf-8"))
+    assert recorder.recording
+    assert recorder.event_count == 2
+    assert recorder.baseline == adapter.current
+    assert [step["step"] for step in truncated["steps"]] == [1, 2]
+    assert [step["step_uuid"] for step in truncated["steps"]] == [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+    ]
+
+    adapter.current = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "9"},
+            orientation={"value_degrees": 0},
+        )
+    )
+    recorder.flush()
+
+    continued = json.loads(path.read_text(encoding="utf-8"))
+    assert [step["step"] for step in continued["steps"]] == [1, 2, 3]
+    assert continued["steps"][2]["changes"][0]["position"] == {"x_nm": "9"}
+
+
+@pytest.mark.parametrize("position", [0, 3])
+def test_resume_from_replay_supports_log_boundaries(tmp_path, position):
+    path = tmp_path / "ref.json"
+    write_log(path, 3)
+    adapter = ReplayAdapter()
+    replay = ReplayController(adapter)
+    replay.load(path)
+    replay.seek(position)
+    recorder = Recorder(adapter)
+
+    recorder.resume(replay.branch())
+
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert recorder.event_count == position
+    assert len(document["steps"]) == position
 
 
 def test_poll_debounces_and_appends_event_to_log_json(tmp_path):

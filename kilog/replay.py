@@ -35,6 +35,17 @@ class ReplayLog:
     initial_pcb_path: str
     changes: tuple[dict[str, Any], ...]
     steps: tuple[tuple[dict[str, Any], ...], ...]
+    source_steps: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ReplayBranch:
+    """The replay prefix and board states needed to continue it as a recording."""
+
+    path: Path
+    initial_pcb_path: str
+    steps: tuple[dict[str, Any], ...]
+    snapshots: tuple[BoardSnapshot, ...]
 
 
 def load_replay_log(path: Path) -> ReplayLog:
@@ -111,6 +122,7 @@ def load_replay_log(path: Path) -> ReplayLog:
         initial_path,
         tuple(validated),
         tuple(tuple(step) for step in steps),
+        tuple(raw_steps),
     )
 
 
@@ -285,6 +297,17 @@ class ReplayController:
 
     def skip(self, amount: int) -> None:
         self.seek(self.position + amount)
+
+    def branch(self) -> ReplayBranch:
+        """Return the current replay prefix as a resumable recording branch."""
+        log = self._require_loaded()
+        self.pause()
+        return ReplayBranch(
+            path=log.path,
+            initial_pcb_path=log.initial_pcb_path,
+            steps=log.source_steps[: self.position],
+            snapshots=tuple(self._position_snapshots[: self.position + 1]),
+        )
 
     def note(self) -> Path:
         """Save the current replay state using its actual position in the log."""

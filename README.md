@@ -59,9 +59,11 @@ the PCB named by `initial_pcb_path` to its saved state before applying the log.
 > **Warning:** loading a replay discards unsaved edits in the open PCB. Save
 > unrelated work first, and open the PCB referenced by the log.
 
-Replay controls provide reset-to-start, previous, play/pause, next, and mark.
+Replay controls provide continue-recording, previous, play/pause, next, and mark.
 The progress bar seeks to any step. Seeking backward restores a cached earlier
-state; playback changes are placed on KiCad's undo stack but are not saved to
+state. **Continue recording** switches to Record at the current step and discards
+all later steps from the loaded log; new edits are then appended from that PCB
+state. Playback changes are placed on KiCad's undo stack but are not saved to
 disk automatically.
 
 ## Board helpers
@@ -70,8 +72,13 @@ disk automatically.
 
 On the **Skill** tab, enter an existing net, select `F.Cu`, `B.Cu`, or both, and
 choose **Fill**. KiLog creates one full-board zone per selected layer in a single
-undoable commit. The zones are intentionally left unfilled; refill them in
-KiCad when ready. Active recording captures them as `zone.add` operations.
+undoable commit. It also creates a higher-priority local zone when two or more
+pads in one non-magnetic footprint share another net on the same selected layer.
+The central body of power inductors and transformers remains copper-free while
+copper around their pads is preserved. KiLog prefers a closed `F.SilkS` outline,
+then a closed `F.Fab` outline, and finally falls back to the central rectangle
+derived from pad placement. The zones are intentionally left unfilled; refill
+them in KiCad when ready. Active recording captures them as `zone.add` operations.
 
 ### Fanout
 
@@ -83,11 +90,12 @@ Fanout behavior:
 
 - Front-side footprints use `F.Cu`; back-side footprints use `B.Cu`.
 - A connected same-net trace supplies the width; otherwise the UI value is used.
-- Via copper stays at least 0.2 mm from the closed `Edge.Cuts` outline and
+- Via copper stays at least 0.4 mm from the closed `Edge.Cuts` outline and
   internal cut-outs.
-- Placement avoids other on-board pads and existing vias.
+- Placement avoids other on-board pads, existing vias, and traces on other nets.
 - Pads already connected to a same-net via are skipped, so repeated runs do not
   duplicate completed fanouts.
+- KiLog exits automatically when its associated PCB Editor window closes.
 
 ## Log format
 

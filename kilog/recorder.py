@@ -4,7 +4,7 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 import time
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING
 from uuid import uuid4
 
 from .diffing import build_event
@@ -15,6 +15,9 @@ from .storage import (
     write_json_atomic,
     write_json_new,
 )
+
+if TYPE_CHECKING:
+    from .replay import ReplayBranch
 
 
 class RecorderError(RuntimeError):
@@ -67,6 +70,7 @@ class Recorder:
         self.events: list[dict] = []
         self.log_path: Path | None = None
         self.preview_position: int | None = None
+        self.initial_pcb_path: str | None = None
 
     @property
     def event_count(self) -> int:
@@ -96,6 +100,9 @@ class Recorder:
         baseline = self.adapter.prepare_recording()
         self.session_uuid = str(uuid4())
         self.events = []
+        self.initial_pcb_path = str(
+            getattr(self.adapter, "board_path", None) or baseline.board_name
+        )
         try:
             if config.overwrite_existing:
                 write_json_atomic(log_path, self._log_document(baseline))
@@ -113,20 +120,59 @@ class Recorder:
         self.recording = True
         return self.baseline
 
+    def resume(self, branch: ReplayBranch) -> BoardSnapshot:
+        """Truncate a replay at its current position and continue recording there."""
+        if self.recording:
+            raise RecorderError("Recording is already running.")
+        if len(branch.snapshots) != len(branch.steps) + 1:
+            raise RecorderError("The replay branch has incomplete board history.")
+
+        baseline = branch.snapshots[-1]
+        current = self.adapter.snapshot()
+        if current.fingerprint != baseline.fingerprint:
+            raise RecorderError("The PCB no longer matches the selected replay position.")
+
+        events = [
+            {
+                "sequence": index,
+                "event_uuid": step["step_uuid"],
+                "changes": [],
+                "persisted_changes": copy.deepcopy(step["changes"]),
+            }
+            for index, step in enumerate(branch.steps, 1)
+        ]
+        config = RecorderConfig(pcb_stem=branch.path.stem)
+        self.config = config
+        self.session_uuid = str(uuid4())
+        self.initial_pcb_path = branch.initial_pcb_path
+        self.log_path = branch.path
+        write_json_atomic(branch.path, self._log_document(baseline, events))
+        self.events = events
+        self.history = list(branch.snapshots[:-1])
+        self.baseline = baseline
+        self.pending = None
+        self.preview_position = None
+        self.recording = True
+        return baseline
+
     def _log_document(
         self, baseline: BoardSnapshot, events: list[dict] | None = None
     ) -> dict:
         recorded_events = self.events if events is None else events
-        board_path = getattr(self.adapter, "board_path", None)
+        board_path = self.initial_pcb_path
         if board_path is None:
-            board_path = baseline.board_name
+            board_path = getattr(self.adapter, "board_path", None) or baseline.board_name
         steps = []
         for event in recorded_events:
-            changes = []
-            for change in event["changes"]:
-                persisted = self._persisted_change(change)
-                if persisted is not None:
-                    changes.append(persisted)
+            persisted_changes = event.get("persisted_changes")
+            if persisted_changes is not None:
+                changes = copy.deepcopy(persisted_changes)
+            else:
+                changes = []
+                for change in event["changes"]:
+                    persisted = self._persisted_change(change)
+                    if persisted is not None:
+                        changes.append(persisted)
             if changes:
                 steps.append(
                     {

@@ -35,6 +35,18 @@ class PcbEditorWindow:
     def __init__(self) -> None:
         self._hwnd: int | None = None
 
+    def is_open(self) -> bool:
+        """Return whether the PCB Editor window associated with KiLog still exists."""
+        if sys.platform != "win32":
+            return True
+
+        if self._hwnd is None:
+            self._hwnd = self._find_window()
+            return self._hwnd is not None
+        # Do not search for a replacement when the original window disappears.
+        # A different PCB Editor instance must not silently adopt this KiLog session.
+        return _window_handle_exists(self._hwnd)
+
     def client_bounds(self) -> WindowRect | None:
         if sys.platform != "win32":
             return None
@@ -316,3 +328,17 @@ class PcbEditorWindow:
         callback = enum_callback(visit)
         user32.EnumWindows(callback, 0)
         return max(candidates, default=(0, 0))[1] or None
+
+
+def _window_handle_exists(hwnd: int) -> bool:
+    """Return whether a native Windows window handle is still valid."""
+    if sys.platform != "win32":
+        return True
+
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    user32.IsWindow.restype = wintypes.BOOL
+    return bool(user32.IsWindow(hwnd))

@@ -10,6 +10,9 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from kipy.board import Board
 from kipy.board_types import (
     ArcTrack,
+    BoardCircle,
+    BoardPolygon,
+    BoardRectangle,
     BoardShape,
     BoardText,
     BoardTextBox,
@@ -88,8 +91,9 @@ class KiCadBoardAdapter:
     FANOUT_VIA_DIAMETER_NM = 600_000
     FANOUT_VIA_DRILL_NM = 300_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
-    FANOUT_VIA_EDGE_CLEARANCE_NM = 200_000
+    FANOUT_VIA_EDGE_CLEARANCE_NM = 400_000
     FANOUT_SEARCH_STEP_NM = 500_000
+    LOCAL_PAD_ZONE_MARGIN_NM = 250_000
 
     def __init__(self, kicad: KiCad, board: Board):
         self.kicad = kicad
@@ -170,7 +174,17 @@ class KiCadBoardAdapter:
     def snapshot(self) -> BoardSnapshot:
         states: dict[str, ItemState] = {}
         for item in self.board.get_items(types=SNAPSHOT_TYPES):
-            proto = item.proto
+            # Filled zone polygons are derived render data, not part of the zone's
+            # editable definition.  A board refill can create thousands of polygon
+            # nodes; serializing and diffing them made the final recording flush look
+            # hung and produced enormous ``zone.refill`` steps.  Keep an unfilled
+            # clone so the log records the zone outline/settings and KiCad can refill
+            # it after replay.
+            raw_item = self._clone_item(item)
+            if isinstance(raw_item, Zone):
+                raw_item.proto.ClearField("filled_polygons")
+
+            proto = raw_item.proto
             item_uuid = proto.id.value
             if not item_uuid:
                 continue
@@ -180,12 +194,14 @@ class KiCadBoardAdapter:
                 use_integers_for_enums=False,
                 always_print_fields_with_no_presence=True,
             )
+            if isinstance(raw_item, Zone):
+                data.pop("filled_polygons", None)
             states[item_uuid] = ItemState(
                 item_uuid=item_uuid,
                 kind=self._kind(item),
                 type_name=proto.DESCRIPTOR.full_name,
                 data=data,
-                raw_item=self._clone_item(item),
+                raw_item=raw_item,
             )
         return BoardSnapshot.create(self.board.name or "<untitled>", states)
 
@@ -221,6 +237,320 @@ class KiCadBoardAdapter:
             polygon.add_hole(hole)
         return polygon
 
+    @classmethod
+    def _magnetic_keepout_loops(
+        cls, snapshot: BoardSnapshot
+    ) -> list[list[tuple[float, float]]]:
+        """Build a body-shaped copper void for each L/T part, with a pad fallback."""
+        keepouts: list[list[tuple[float, float]]] = []
+        for state in snapshot.items.values():
+            footprint = state.raw_item
+            if not isinstance(footprint, FootprintInstance):
+                continue
+            reference = footprint.reference_field.text.value.strip().upper()
+            if not reference.startswith(("L", "T")):
+                continue
+
+            body_bounds = cls._magnetic_body_bounds(footprint)
+            if body_bounds is not None:
+                left, top, right, bottom = body_bounds
+                keepouts.append(
+                    [(left, top), (right, top), (right, bottom), (left, bottom)]
+                )
+                continue
+
+            # Footprints without a usable body outline fall back to the largest
+            # pad-free rectangle crossing the footprint anchor.
+            pad_bounds = [
+                bounds
+                for pad in footprint.definition.pads
+                if (bounds := cls._pad_bounds_on_all_copper_layers(pad)) is not None
+            ]
+            if len(pad_bounds) < 2:
+                continue
+
+            center_x, center_y = footprint.position.x, footprint.position.y
+            outer_left = min(bounds[0] for bounds in pad_bounds)
+            outer_top = min(bounds[1] for bounds in pad_bounds)
+            outer_right = max(bounds[2] for bounds in pad_bounds)
+            outer_bottom = max(bounds[3] for bounds in pad_bounds)
+            candidates: list[tuple[float, tuple[float, float, float, float]]] = []
+
+            left_edges = [bounds[2] for bounds in pad_bounds if bounds[2] <= center_x]
+            right_edges = [bounds[0] for bounds in pad_bounds if bounds[0] >= center_x]
+            if left_edges and right_edges:
+                left = max(left_edges)
+                right = min(right_edges)
+                if left < right:
+                    candidates.append(
+                        (
+                            (right - left) * (outer_bottom - outer_top),
+                            (left, outer_top, right, outer_bottom),
+                        )
+                    )
+
+            top_edges = [bounds[3] for bounds in pad_bounds if bounds[3] <= center_y]
+            bottom_edges = [bounds[1] for bounds in pad_bounds if bounds[1] >= center_y]
+            if top_edges and bottom_edges:
+                top = max(top_edges)
+                bottom = min(bottom_edges)
+                if top < bottom:
+                    candidates.append(
+                        (
+                            (outer_right - outer_left) * (bottom - top),
+                            (outer_left, top, outer_right, bottom),
+                        )
+                    )
+
+            if not candidates:
+                continue
+            # Corner pad arrays can leave a gap on both axes.  The larger central
+            # rectangle represents the magnetic body rather than a narrow channel
+            # between pads in the same row or column.
+            _, (left, top, right, bottom) = max(
+                candidates, key=lambda value: value[0]
+            )
+            keepouts.append(
+                [(left, top), (right, top), (right, bottom), (left, bottom)]
+            )
+        return keepouts
+
+    @staticmethod
+    def _closed_shape_bounds(
+        shape: BoardShape,
+    ) -> tuple[float, float, float, float] | None:
+        """Return the axis-aligned bounds of a closed footprint graphic."""
+        points: list[tuple[float, float]] = []
+        if isinstance(shape, BoardCircle):
+            radius = math.dist(
+                (shape.center.x, shape.center.y),
+                (shape.radius_point.x, shape.radius_point.y),
+            )
+            points = [
+                (shape.center.x - radius, shape.center.y - radius),
+                (shape.center.x + radius, shape.center.y + radius),
+            ]
+        elif isinstance(shape, BoardRectangle):
+            points = [
+                (shape.top_left.x, shape.top_left.y),
+                (shape.bottom_right.x, shape.bottom_right.y),
+            ]
+        elif isinstance(shape, BoardPolygon):
+            for polygon in shape.polygons:
+                box = polygon.bounding_box()
+                points.extend(
+                    [
+                        (box.pos.x, box.pos.y),
+                        (box.pos.x + box.size.x, box.pos.y + box.size.y),
+                    ]
+                )
+        if not points:
+            return None
+
+        half_stroke = max(0, shape.attributes.stroke.width) / 2
+        xs, ys = zip(*points)
+        return (
+            min(xs) - half_stroke,
+            min(ys) - half_stroke,
+            max(xs) + half_stroke,
+            max(ys) + half_stroke,
+        )
+
+    @classmethod
+    def _magnetic_body_bounds(
+        cls, footprint: FootprintInstance
+    ) -> tuple[float, float, float, float] | None:
+        """Prefer a closed F.SilkS body, then fall back to a closed F.Fab body."""
+        center_x, center_y = footprint.position.x, footprint.position.y
+        for layer in (BoardLayer.BL_F_SilkS, BoardLayer.BL_F_Fab):
+            candidates = [
+                bounds
+                for shape in footprint.definition.shapes
+                if shape.layer == layer
+                if (bounds := cls._closed_shape_bounds(shape)) is not None
+                if bounds[0] <= center_x <= bounds[2]
+                and bounds[1] <= center_y <= bounds[3]
+            ]
+            if candidates:
+                return max(
+                    candidates,
+                    key=lambda bounds: (bounds[2] - bounds[0])
+                    * (bounds[3] - bounds[1]),
+                )
+        return None
+
+    @staticmethod
+    def _pad_bounds_on_all_copper_layers(
+        pad,
+    ) -> tuple[float, float, float, float] | None:
+        """Return the union of a pad's copper shapes on every board layer."""
+        angle = math.radians(pad.padstack.angle.degrees)
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        bounds = []
+        for copper in pad.padstack.copper_layers:
+            if copper.size.x <= 0 or copper.size.y <= 0:
+                continue
+            center_x = pad.position.x + cosine * copper.offset.x - sine * copper.offset.y
+            center_y = pad.position.y + sine * copper.offset.x + cosine * copper.offset.y
+            half_x = abs(cosine) * copper.size.x / 2 + abs(sine) * copper.size.y / 2
+            half_y = abs(sine) * copper.size.x / 2 + abs(cosine) * copper.size.y / 2
+            bounds.append(
+                (
+                    center_x - half_x,
+                    center_y - half_y,
+                    center_x + half_x,
+                    center_y + half_y,
+                )
+            )
+        if not bounds:
+            return None
+        return (
+            min(value[0] for value in bounds),
+            min(value[1] for value in bounds),
+            max(value[2] for value in bounds),
+            max(value[3] for value in bounds),
+        )
+
+    @staticmethod
+    def _pad_bounds_on_layer(pad, layer) -> tuple[float, float, float, float] | None:
+        """Return the axis-aligned copper bounds of a pad on one board layer."""
+        copper = pad.padstack.copper_layer(layer)
+        if copper is None or copper.size.x <= 0 or copper.size.y <= 0:
+            return None
+        angle = math.radians(pad.padstack.angle.degrees)
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        center_x = pad.position.x + cosine * copper.offset.x - sine * copper.offset.y
+        center_y = pad.position.y + sine * copper.offset.x + cosine * copper.offset.y
+        half_x = (
+            abs(cosine) * copper.size.x / 2 + abs(sine) * copper.size.y / 2
+        )
+        half_y = (
+            abs(sine) * copper.size.x / 2 + abs(cosine) * copper.size.y / 2
+        )
+        return (
+            center_x - half_x,
+            center_y - half_y,
+            center_x + half_x,
+            center_y + half_y,
+        )
+
+    @classmethod
+    def _shared_pad_zones(
+        cls,
+        snapshot: BoardSnapshot,
+        layers,
+        fill_net,
+        nets_by_name,
+        board_loops,
+    ) -> list[Zone]:
+        """Create one local zone for each same-net multi-pad group in a footprint."""
+        zones: list[Zone] = []
+        fill_name = fill_net.name.casefold()
+        for state in snapshot.items.values():
+            footprint = state.raw_item
+            if not isinstance(footprint, FootprintInstance):
+                continue
+            if not point_inside_board(
+                (footprint.position.x, footprint.position.y), board_loops
+            ):
+                continue
+
+            reference = footprint.reference_field.text.value.strip().upper()
+            # Preserve the central copper void requested for magnetic components.
+            if reference.startswith(("L", "T")):
+                continue
+
+            for layer in layers:
+                grouped: dict[str, list[tuple[float, float, float, float]]] = {}
+                for pad in footprint.definition.pads:
+                    net_name = pad.net.name.strip()
+                    if not net_name or net_name.casefold() == fill_name:
+                        continue
+                    bounds = cls._pad_bounds_on_layer(pad, layer)
+                    if bounds is not None:
+                        grouped.setdefault(net_name.casefold(), []).append(bounds)
+
+                for net_key, pad_bounds in grouped.items():
+                    if len(pad_bounds) < 2:
+                        continue
+                    net = nets_by_name.get(net_key)
+                    if net is None:
+                        continue
+                    margin = cls.LOCAL_PAD_ZONE_MARGIN_NM
+                    left = min(value[0] for value in pad_bounds) - margin
+                    top = min(value[1] for value in pad_bounds) - margin
+                    right = max(value[2] for value in pad_bounds) + margin
+                    bottom = max(value[3] for value in pad_bounds) + margin
+                    zone = Zone()
+                    zone.net = net
+                    zone.layers = [layer]
+                    zone.priority = 1
+                    zone.name = f"KiLog {reference or 'footprint'} {net.name} pad group"
+                    zone.outline = cls._zone_outline(
+                        [[(left, top), (right, top), (right, bottom), (left, bottom)]]
+                    )
+                    zones.append(zone)
+        return zones
+
+    @staticmethod
+    def _same_closed_loop(
+        left: list[tuple[float, float]],
+        right: list[tuple[float, float]],
+        tolerance: float = 1.0,
+    ) -> bool:
+        """Compare closed loops independent of their start node and direction."""
+        if len(left) != len(right) or not left:
+            return False
+
+        def close(a, b) -> bool:
+            return abs(a[0] - b[0]) <= tolerance and abs(a[1] - b[1]) <= tolerance
+
+        for start in range(len(right)):
+            if not close(left[0], right[start]):
+                continue
+            if all(close(left[index], right[(start + index) % len(right)]) for index in range(len(left))):
+                return True
+            if all(close(left[index], right[(start - index) % len(right)]) for index in range(len(left))):
+                return True
+        return False
+
+    @classmethod
+    def _zones_replaced_by_fill(
+        cls,
+        snapshot: BoardSnapshot,
+        layers,
+        fill_net,
+        board_outer_loop,
+    ) -> list:
+        """Find current and legacy KiLog zones that a new Fill supersedes."""
+        selected_layers = set(layers)
+        fill_name = fill_net.name.casefold()
+        remove_ids = []
+        for state in snapshot.items.values():
+            zone = state.raw_item
+            if not isinstance(zone, Zone) or not selected_layers.intersection(zone.layers):
+                continue
+            if zone.name.startswith("KiLog "):
+                remove_ids.append(zone.id)
+                continue
+            if zone.net is None or zone.net.name.casefold() != fill_name:
+                continue
+            try:
+                outline = [
+                    (node.point.x, node.point.y)
+                    for node in zone.outline.outline.nodes
+                    if node.has_point
+                ]
+            except (IndexError, ValueError):
+                continue
+            # Older KiLog full-board zones did not have a name.  Match their
+            # defining outer loop so user-created partial zones remain untouched.
+            if cls._same_closed_loop(outline, board_outer_loop):
+                remove_ids.append(zone.id)
+        return remove_ids
+
     def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int:
         """Create one unfilled full-board copper zone on each requested layer."""
         requested_net = net_name.strip()
@@ -248,20 +578,37 @@ class KiCadBoardAdapter:
         except KeyError as exc:
             raise RecorderError(f"Unsupported copper layer: {exc.args[0]}") from exc
 
-        loops = ordered_board_loops(edge_segments(self.snapshot()))
+        snapshot = self.snapshot()
+        loops = ordered_board_loops(edge_segments(snapshot))
         if not loops:
             raise RecorderError("Edge.Cuts does not contain a closed board outline.")
+        zone_loops = [*loops, *self._magnetic_keepout_loops(snapshot)]
 
         zones = []
         for layer in layers:
             zone = Zone()
             zone.net = net
             zone.layers = [layer]
-            zone.outline = self._zone_outline(loops)
+            zone.name = f"KiLog full-board {net.name} {BoardLayer.Name(layer)}"
+            zone.outline = self._zone_outline(zone_loops)
             zones.append(zone)
+        zones.extend(
+            self._shared_pad_zones(
+                snapshot,
+                layers,
+                net,
+                {value.name.casefold(): value for value in nets},
+                loops,
+            )
+        )
+        remove_ids = self._zones_replaced_by_fill(
+            snapshot, layers, net, loops[0]
+        )
 
         commit = self.board.begin_commit()
         try:
+            if remove_ids:
+                self.board.remove_items_by_id(remove_ids)
             self.board.create_items(zones)
             self.board.push_commit(commit, f"KiLog: create board zones for {net.name}")
         except Exception:
@@ -345,9 +692,11 @@ class KiCadBoardAdapter:
                 via_position = self._find_fanout_position(
                     pad,
                     footprint,
+                    layer,
                     loops,
                     pad_obstacles,
                     via_obstacles,
+                    existing_tracks,
                     max_search,
                     track_width,
                 )
@@ -494,9 +843,11 @@ class KiCadBoardAdapter:
         self,
         pad,
         footprint: FootprintInstance,
+        layer,
         loops: list[list[tuple[float, float]]],
         pad_obstacles: list[tuple[float, float, float, object]],
         via_obstacles: list[tuple[float, float, float]],
+        existing_tracks: list[Track | ArcTrack],
         max_search: float,
         track_width_nm: int,
     ) -> Vector2 | None:
@@ -529,7 +880,7 @@ class KiCadBoardAdapter:
             )
             if not circle_inside_board(
                 candidate,
-                # Keep the entire via copper, not merely its center, 0.2 mm
+                # Keep the entire via copper, not merely its center, 0.4 mm
                 # away from both the outer board edge and internal cut-outs.
                 via_radius + self.FANOUT_VIA_EDGE_CLEARANCE_NM,
                 loops,
@@ -558,8 +909,128 @@ class KiCadBoardAdapter:
                 for obstacle in pad_obstacles
             ):
                 continue
+            if self._fanout_hits_other_net_track(
+                start,
+                candidate,
+                layer,
+                pad.net.name,
+                track_width_nm,
+                via_radius,
+                existing_tracks,
+            ):
+                continue
             return Vector2.from_xy(*candidate)
         return None
+
+    @staticmethod
+    def _segment_distance(start, end, obstacle_start, obstacle_end) -> float:
+        """Return the shortest distance between two closed line segments."""
+        def orientation(left, middle, right):
+            return (middle[0] - left[0]) * (right[1] - left[1]) - (
+                middle[1] - left[1]
+            ) * (right[0] - left[0])
+
+        def on_segment(point, left, right):
+            return (
+                min(left[0], right[0]) <= point[0] <= max(left[0], right[0])
+                and min(left[1], right[1]) <= point[1] <= max(left[1], right[1])
+            )
+
+        first = orientation(start, end, obstacle_start)
+        second = orientation(start, end, obstacle_end)
+        third = orientation(obstacle_start, obstacle_end, start)
+        fourth = orientation(obstacle_start, obstacle_end, end)
+        def opposite_signs(left, right):
+            return (left > 0 and right < 0) or (left < 0 and right > 0)
+
+        intersects = (
+            (first == 0 and on_segment(obstacle_start, start, end))
+            or (second == 0 and on_segment(obstacle_end, start, end))
+            or (third == 0 and on_segment(start, obstacle_start, obstacle_end))
+            or (fourth == 0 and on_segment(end, obstacle_start, obstacle_end))
+            or (opposite_signs(first, second) and opposite_signs(third, fourth))
+        )
+        if intersects:
+            return 0.0
+        return min(
+            point_segment_distance(start, obstacle_start, obstacle_end),
+            point_segment_distance(end, obstacle_start, obstacle_end),
+            point_segment_distance(obstacle_start, start, end),
+            point_segment_distance(obstacle_end, start, end),
+        )
+
+    @staticmethod
+    def _track_segments(track: Track | ArcTrack):
+        """Yield straight segments approximating a track, plus arc sagitta."""
+        if isinstance(track, Track):
+            yield (
+                (track.start.x, track.start.y),
+                (track.end.x, track.end.y),
+                0.0,
+            )
+            return
+
+        center = track.center()
+        arc_angle = track.angle()
+        if center is None or arc_angle is None or track.radius() == 0:
+            yield (
+                (track.start.x, track.start.y),
+                (track.end.x, track.end.y),
+                0.0,
+            )
+            return
+
+        start_angle = math.atan2(track.start.y - center.y, track.start.x - center.x)
+        mid_angle = math.atan2(track.mid.y - center.y, track.mid.x - center.x)
+        ccw_to_mid = (mid_angle - start_angle) % (2 * math.pi)
+        ccw = ccw_to_mid <= arc_angle + 1e-12
+        signed_angle = arc_angle if ccw else -arc_angle
+        segment_count = max(1, math.ceil(arc_angle / math.radians(5)))
+        step = signed_angle / segment_count
+        radius = track.radius()
+        sagitta = radius * (1 - math.cos(abs(step) / 2))
+        points = [
+            (
+                center.x + radius * math.cos(start_angle + step * index),
+                center.y + radius * math.sin(start_angle + step * index),
+            )
+            for index in range(segment_count + 1)
+        ]
+        for segment_start, segment_end in zip(points, points[1:]):
+            yield segment_start, segment_end, sagitta
+
+    @classmethod
+    def _fanout_hits_other_net_track(
+        cls,
+        start,
+        candidate,
+        layer,
+        net_name: str,
+        track_width_nm: int,
+        via_radius: float,
+        existing_tracks: list[Track | ArcTrack],
+    ) -> bool:
+        """Reject fanout copper that would touch a trace belonging to another net."""
+        requested_net = net_name.casefold()
+        for obstacle in existing_tracks:
+            if obstacle.net.name.casefold() == requested_net:
+                continue
+            for obstacle_start, obstacle_end, approximation_margin in cls._track_segments(
+                obstacle
+            ):
+                clearance = cls.FANOUT_PAD_CLEARANCE_NM + approximation_margin
+                obstacle_radius = obstacle.width / 2
+                # The through via intersects every copper layer.
+                if point_segment_distance(candidate, obstacle_start, obstacle_end) < (
+                    via_radius + obstacle_radius + clearance
+                ):
+                    return True
+                # The fanout trace only conflicts with copper on its own layer.
+                if obstacle.layer == layer and cls._segment_distance(
+                    start, candidate, obstacle_start, obstacle_end
+                ) < (track_width_nm / 2 + obstacle_radius + clearance):
+                    return True
+        return False
 
     def prepare_replay(self, initial_pcb_path: str) -> BoardSnapshot:
         """Reset the matching open board to its saved on-disk replay baseline."""
@@ -828,6 +1299,14 @@ class KiCadBoardAdapter:
         description: str = "KiLog replay step",
     ) -> BoardSnapshot:
         """Apply all changes in one replay step as one undoable KiCad commit."""
+        refill_zones = any(
+            change.get("operation") == "zone.refill"
+            and not (
+                str(change.get("path", "")).endswith("/filled")
+                and change.get("value") is False
+            )
+            for change in changes
+        )
         current = self._snapshot_with_retry()
         states = dict(current.items)
         for change in changes:
@@ -843,6 +1322,12 @@ class KiCadBoardAdapter:
             if current.items[item_id].log_value() != states[item_id].log_value()
         ]
         if not remove_ids and not create_items and not update_items:
+            if refill_zones:
+                # ``filled`` records the user's intent, while filled_polygons is
+                # deliberately omitted from logs because it is large derived data.
+                # Rebuild that data in KiCad even when the flag already matched.
+                self.board.refill_zones()
+                return self._snapshot_with_retry()
             return current
 
         commit = self.board.begin_commit()
@@ -857,4 +1342,9 @@ class KiCadBoardAdapter:
         except Exception:
             self.board.drop_commit(commit)
             raise
+        if refill_zones:
+            # Updating Zone.filled alone does not calculate any copper polygons.
+            # The PCB Editor's refill command must run after the zone definitions
+            # have been committed to its live board model.
+            self.board.refill_zones()
         return self._snapshot_with_retry()

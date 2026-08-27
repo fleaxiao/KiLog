@@ -4,7 +4,9 @@ import math
 
 import pytest
 from kipy.board_types import (
+    ArcTrack,
     BoardLayer,
+    BoardRectangle,
     BoardSegment,
     Footprint3DModel,
     FootprintInstance,
@@ -45,6 +47,7 @@ class FillBoard(FakeBoard):
         self.commit_count = 0
         self.create_calls = 0
         self.refilled = False
+        self.removed = []
 
     def get_nets(self):
         return [Net(name="GND"), Net(name="VCC")]
@@ -56,6 +59,16 @@ class FillBoard(FakeBoard):
         self.create_calls += 1
         self.created.extend(items)
         self.items.extend(items)
+        return items
+
+    def remove_items_by_id(self, item_ids):
+        removed_ids = {item_id.value for item_id in item_ids}
+        self.removed.extend(removed_ids)
+        self.items[:] = [item for item in self.items if item.proto.id.value not in removed_ids]
+
+    def update_items(self, items):
+        updates = {item.proto.id.value: item for item in items}
+        self.items[:] = [updates.get(item.proto.id.value, item) for item in self.items]
         return items
 
     def push_commit(self, _commit, message):
@@ -114,6 +127,19 @@ def test_snapshot_uses_one_api_request_and_classifies_common_items():
         "zone-1": "zone",
     }
     assert adapter.output_directory.as_posix().lower().endswith("/project")
+
+
+def test_snapshot_records_zone_definition_without_derived_filled_polygons():
+    zone = with_id(Zone(), "zone-1")
+    zone.proto.filled_polygons.add()
+    board = FakeBoard([zone])
+
+    state = KiCadBoardAdapter(object(), board).snapshot().items["zone-1"]
+
+    assert "filled_polygons" not in state.data
+    assert len(state.raw_item.proto.filled_polygons) == 0
+    # Snapshot normalization must not alter the live KiCad object.
+    assert len(zone.proto.filled_polygons) == 1
 
 
 def test_relative_board_filename_uses_current_kicad_project_directory(tmp_path):
@@ -258,6 +284,175 @@ def test_fill_board_creates_recordable_zone_per_selected_layer():
     assert not board.refilled
 
 
+def test_magnetic_void_prefers_f_silkscreen_body_over_f_fab():
+    inductor = with_id(FootprintInstance(), "inductor-outline")
+    inductor.position = Vector2.from_xy(10_000_000, 5_000_000)
+    inductor.reference_field.text.value = "L1"
+    fab = BoardRectangle()
+    fab.layer = BoardLayer.BL_F_Fab
+    fab.top_left = Vector2.from_xy(6_000_000, 3_000_000)
+    fab.bottom_right = Vector2.from_xy(14_000_000, 7_000_000)
+    inductor.definition.add_item(fab)
+    silk = BoardRectangle()
+    silk.layer = BoardLayer.BL_F_SilkS
+    silk.top_left = Vector2.from_xy(5_000_000, 2_000_000)
+    silk.bottom_right = Vector2.from_xy(15_000_000, 8_000_000)
+    inductor.definition.add_item(silk)
+
+    loops = KiCadBoardAdapter._magnetic_keepout_loops(
+        KiCadBoardAdapter(object(), FakeBoard([inductor])).snapshot()
+    )
+
+    assert loops == [[
+        (5_000_000, 2_000_000),
+        (15_000_000, 2_000_000),
+        (15_000_000, 8_000_000),
+        (5_000_000, 8_000_000),
+    ]]
+
+
+def test_magnetic_void_uses_f_fab_when_silkscreen_has_no_closed_body():
+    transformer = with_id(FootprintInstance(), "transformer-fab")
+    transformer.position = Vector2.from_xy(10_000_000, 5_000_000)
+    transformer.reference_field.text.value = "T1"
+    fab = BoardRectangle()
+    fab.layer = BoardLayer.BL_F_Fab
+    fab.top_left = Vector2.from_xy(6_000_000, 3_000_000)
+    fab.bottom_right = Vector2.from_xy(14_000_000, 7_000_000)
+    transformer.definition.add_item(fab)
+
+    loops = KiCadBoardAdapter._magnetic_keepout_loops(
+        KiCadBoardAdapter(object(), FakeBoard([transformer])).snapshot()
+    )
+
+    assert loops == [[
+        (6_000_000, 3_000_000),
+        (14_000_000, 3_000_000),
+        (14_000_000, 7_000_000),
+        (6_000_000, 7_000_000),
+    ]]
+
+
+def test_fill_board_falls_back_to_center_between_magnetic_pad_rows():
+    transformer = with_id(FootprintInstance(), "transformer-1")
+    transformer.position = Vector2.from_xy(10_000_000, 5_000_000)
+    transformer.reference_field.text.value = "T1"
+    for y in (1_000_000, 9_000_000):
+        for x in (6_000_000, 8_500_000, 11_500_000, 14_000_000):
+            pad = Pad()
+            pad.position = Vector2.from_xy(x, y)
+            pad.padstack.copper_layers[0].size = Vector2.from_xy(1_000_000, 2_000_000)
+            transformer.definition.add_item(pad)
+    board = FillBoard(
+        [
+            transformer,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 10_000_000)),
+            edge_segment("edge-3", (20_000_000, 10_000_000), (0, 10_000_000)),
+            edge_segment("edge-4", (0, 10_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fill_board_copper("GND", ("F.Cu", "B.Cu"))
+
+    assert len(board.created) == 2
+    for zone in board.created:
+        assert len(zone.outline.holes) == 1
+        assert [(node.point.x, node.point.y) for node in zone.outline.holes[0].nodes] == [
+            (5_500_000, 2_000_000),
+            (14_500_000, 2_000_000),
+            (14_500_000, 8_000_000),
+            (5_500_000, 8_000_000),
+        ]
+
+
+def test_magnetic_center_void_uses_gap_between_two_inductor_pads():
+    inductor = with_id(FootprintInstance(), "inductor-1")
+    inductor.position = Vector2.from_xy(10_000_000, 5_000_000)
+    inductor.reference_field.text.value = "L1"
+    for x in (5_000_000, 15_000_000):
+        pad = Pad()
+        pad.position = Vector2.from_xy(x, 5_000_000)
+        pad.padstack.copper_layers[0].size = Vector2.from_xy(2_000_000, 4_000_000)
+        inductor.definition.add_item(pad)
+
+    loops = KiCadBoardAdapter._magnetic_keepout_loops(
+        KiCadBoardAdapter(object(), FakeBoard([inductor])).snapshot()
+    )
+
+    assert loops == [[
+        (6_000_000, 3_000_000),
+        (14_000_000, 3_000_000),
+        (14_000_000, 7_000_000),
+        (6_000_000, 7_000_000),
+    ]]
+
+
+def test_fill_board_adds_one_local_zone_for_same_net_pads_in_a_footprint():
+    component = with_id(FootprintInstance(), "component-1")
+    component.position = Vector2.from_xy(10_000_000, 5_000_000)
+    component.reference_field.text.value = "U1"
+    for x in (7_000_000, 13_000_000):
+        pad = Pad()
+        pad.position = Vector2.from_xy(x, 5_000_000)
+        pad.net = Net(name="VCC")
+        pad.pad_type = PadType.PT_SMD
+        pad.padstack.copper_layers[0].size = Vector2.from_xy(2_000_000, 2_000_000)
+        component.definition.add_item(pad)
+    board = FillBoard(
+        [
+            component,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 10_000_000)),
+            edge_segment("edge-3", (20_000_000, 10_000_000), (0, 10_000_000)),
+            edge_segment("edge-4", (0, 10_000_000), (0, 0)),
+        ]
+    )
+
+    count = KiCadBoardAdapter(object(), board).fill_board_copper(
+        "GND", ("F.Cu", "B.Cu")
+    )
+
+    assert count == 3
+    local_zone = board.created[2]
+    assert local_zone.net.name == "VCC"
+    assert list(local_zone.layers) == [BoardLayer.BL_F_Cu]
+    assert local_zone.priority == 1
+    assert [(node.point.x, node.point.y) for node in local_zone.outline.outline.nodes] == [
+        (5_750_000, 3_750_000),
+        (14_250_000, 3_750_000),
+        (14_250_000, 6_250_000),
+        (5_750_000, 6_250_000),
+    ]
+
+
+def test_fill_board_replaces_legacy_full_board_zone_with_stale_keepout():
+    old_zone = with_id(Zone(), "old-full-board-zone")
+    old_zone.net = Net(name="GND")
+    old_zone.layers = [BoardLayer.BL_F_Cu]
+    old_zone.outline = KiCadBoardAdapter._zone_outline(
+        [
+            [(0, 0), (20_000_000, 0), (20_000_000, 10_000_000), (0, 10_000_000)],
+            [(1_000_000, 1_000_000), (2_000_000, 1_000_000), (2_000_000, 2_000_000), (1_000_000, 2_000_000)],
+        ]
+    )
+    board = FillBoard(
+        [
+            old_zone,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 10_000_000)),
+            edge_segment("edge-3", (20_000_000, 10_000_000), (0, 10_000_000)),
+            edge_segment("edge-4", (0, 10_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fill_board_copper("GND", ("F.Cu",))
+
+    assert board.removed == ["old-full-board-zone"]
+    assert len(board.created) == 1
+    assert board.created[0].name == "KiLog full-board GND BL_F_Cu"
+
+
 def test_fanout_creates_trace_and_via_for_matching_smd_pads_only():
     footprint = with_id(FootprintInstance(), "fp-fanout")
     footprint.position = Vector2.from_xy(10_000_000, 10_000_000)
@@ -333,7 +528,7 @@ def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
     assert 500_000 <= via.position.y <= 19_500_000
 
 
-def test_fanout_via_clears_board_edge_by_at_least_point_two_mm():
+def test_fanout_via_clears_board_edge_by_at_least_point_four_mm():
     footprint = with_id(FootprintInstance(), "fp-near-edge")
     footprint.position = Vector2.from_xy(2_400_000, 10_000_000)
     footprint.layer = BoardLayer.BL_F_Cu
@@ -364,7 +559,7 @@ def test_fanout_via_clears_board_edge_by_at_least_point_two_mm():
         via.position.y,
         20_000_000 - via.position.x,
         20_000_000 - via.position.y,
-    ) >= 500_000
+    ) >= 700_000
 
 
 def test_fanout_ignores_components_outside_board():
@@ -436,6 +631,103 @@ def test_fanout_via_avoids_other_on_board_pads():
         via.position.y - blocker.position.y,
     ) >= blocker_radius + 300_000 + 200_000
     assert via.position.x == source.position.x or via.position.y == source.position.y
+
+
+def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():
+    footprint = with_id(FootprintInstance(), "fp-track-obstacle")
+    footprint.position = Vector2.from_xy(9_000_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(source)
+    blocker = with_id(Track(), "vcc-track")
+    blocker.net = Net(name="VCC")
+    blocker.layer = BoardLayer.BL_F_Cu
+    blocker.start = Vector2.from_xy(10_400_000, 9_900_000)
+    blocker.end = Vector2.from_xy(10_400_000, 10_100_000)
+    blocker.width = 20_000
+    board = FillBoard(
+        [
+            footprint,
+            blocker,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fanout_net("GND", 0.1)
+
+    fanout = board.created[0]
+    assert (fanout.end.x, fanout.end.y) != (11_000_000, 10_000_000)
+
+
+def test_fanout_via_avoids_other_net_track_on_opposite_layer():
+    footprint = with_id(FootprintInstance(), "fp-via-track-obstacle")
+    footprint.position = Vector2.from_xy(9_000_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(source)
+    blocker = with_id(Track(), "vcc-back-track")
+    blocker.net = Net(name="VCC")
+    blocker.layer = BoardLayer.BL_B_Cu
+    blocker.start = Vector2.from_xy(11_000_000, 9_500_000)
+    blocker.end = Vector2.from_xy(11_000_000, 10_500_000)
+    blocker.width = 200_000
+    board = FillBoard(
+        [
+            footprint,
+            blocker,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fanout_net("GND")
+
+    via = board.created[1]
+    assert (via.position.x, via.position.y) != (11_000_000, 10_000_000)
+
+
+def test_fanout_trace_avoids_other_net_arc_on_same_layer():
+    footprint = with_id(FootprintInstance(), "fp-arc-obstacle")
+    footprint.position = Vector2.from_xy(9_000_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(source)
+    blocker = with_id(ArcTrack(), "vcc-arc")
+    blocker.net = Net(name="VCC")
+    blocker.layer = BoardLayer.BL_F_Cu
+    blocker.start = Vector2.from_xy(10_400_000, 9_900_000)
+    blocker.mid = Vector2.from_xy(10_490_000, 10_000_000)
+    blocker.end = Vector2.from_xy(10_400_000, 10_100_000)
+    blocker.width = 1
+    board = FillBoard(
+        [
+            footprint,
+            blocker,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fanout_net("GND", 0.1)
+
+    fanout = board.created[0]
+    assert (fanout.end.x, fanout.end.y) != (11_000_000, 10_000_000)
 
 
 def test_fanout_chooses_short_axis_of_rectangular_pad():
@@ -597,3 +889,25 @@ def test_replay_applies_multiple_changes_as_one_board_commit():
     assert board.create_calls == 1
     assert board.commit_count == 1
     assert board.commit_message == "KiLog replay: step 1"
+
+
+def test_replay_zone_refill_rebuilds_derived_copper_polygons():
+    zone = with_id(Zone(), "zone-front")
+    zone.net = Net(name="GND")
+    zone.layers = [BoardLayer.BL_F_Cu]
+    board = FillBoard([zone])
+    adapter = KiCadBoardAdapter(object(), board)
+
+    result = adapter.apply_step(
+        ({
+            "item_uuid": "zone-front",
+            "operation": "zone.refill",
+            "path": "/items/zone-front/data/filled",
+            "value": True,
+        },),
+        "KiLog replay: final fill",
+    )
+
+    assert result.items["zone-front"].data["filled"] is True
+    assert board.refilled
+    assert board.commit_count == 1

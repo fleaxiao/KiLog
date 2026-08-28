@@ -90,7 +90,7 @@ Fanout behavior:
 
 - Front-side footprints use `F.Cu`; back-side footprints use `B.Cu`.
 - A connected same-net trace supplies the width; otherwise the UI value is used.
-- Via copper stays at least 0.4 mm from the closed `Edge.Cuts` outline and
+- Via copper stays at least 0.5 mm from the closed `Edge.Cuts` outline and
   internal cut-outs.
 - Placement avoids other on-board pads, existing vias, and traces on other nets.
 - Pads already connected to a same-net via are skipped, so repeated runs do not

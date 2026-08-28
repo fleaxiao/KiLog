@@ -91,7 +91,7 @@ class KiCadBoardAdapter:
     FANOUT_VIA_DIAMETER_NM = 600_000
     FANOUT_VIA_DRILL_NM = 300_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
-    FANOUT_VIA_EDGE_CLEARANCE_NM = 400_000
+    FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
     FANOUT_SEARCH_STEP_NM = 500_000
     LOCAL_PAD_ZONE_MARGIN_NM = 250_000
 
@@ -880,7 +880,7 @@ class KiCadBoardAdapter:
             )
             if not circle_inside_board(
                 candidate,
-                # Keep the entire via copper, not merely its center, 0.4 mm
+                # Keep the entire via copper, not merely its center, 0.5 mm
                 # away from both the outer board edge and internal cut-outs.
                 via_radius + self.FANOUT_VIA_EDGE_CLEARANCE_NM,
                 loops,

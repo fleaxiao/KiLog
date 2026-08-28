@@ -528,7 +528,7 @@ def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
     assert 500_000 <= via.position.y <= 19_500_000
 
 
-def test_fanout_via_clears_board_edge_by_at_least_point_four_mm():
+def test_fanout_via_clears_board_edge_by_at_least_point_five_mm():
     footprint = with_id(FootprintInstance(), "fp-near-edge")
     footprint.position = Vector2.from_xy(2_400_000, 10_000_000)
     footprint.layer = BoardLayer.BL_F_Cu
@@ -559,7 +559,7 @@ def test_fanout_via_clears_board_edge_by_at_least_point_four_mm():
         via.position.y,
         20_000_000 - via.position.x,
         20_000_000 - via.position.y,
-    ) >= 700_000
+    ) >= 800_000
 
 
 def test_fanout_ignores_components_outside_board():

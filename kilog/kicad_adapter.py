@@ -669,6 +669,7 @@ class KiCadBoardAdapter:
         fanout_count = 0
         matching_pad_count = 0
         already_fanned_count = 0
+        failed_pads = []
 
         for footprint in footprints:
             layer = (
@@ -701,6 +702,7 @@ class KiCadBoardAdapter:
                     track_width,
                 )
                 if via_position is None:
+                    failed_pads.append(self._fanout_pad_label(footprint, pad))
                     continue
 
                 track = Track()
@@ -724,6 +726,10 @@ class KiCadBoardAdapter:
 
         if not created and matching_pad_count and already_fanned_count == matching_pad_count:
             return 0
+        if not created and failed_pads:
+            raise RecorderError(
+                self._fanout_incomplete_message(net.name, failed_pads, fanout_count)
+            )
         if not created:
             raise RecorderError(f"No unfanned SMD pads found on network {net.name!r}.")
 
@@ -734,7 +740,34 @@ class KiCadBoardAdapter:
         except Exception:
             self.board.drop_commit(commit)
             raise
+        if failed_pads:
+            raise RecorderError(
+                self._fanout_incomplete_message(net.name, failed_pads, fanout_count)
+            )
         return fanout_count
+
+    @staticmethod
+    def _fanout_pad_label(footprint: FootprintInstance, pad) -> str:
+        reference = footprint.reference_field.text.value.strip() or "<unreferenced>"
+        number = str(pad.number).strip() or "?"
+        return f"{reference}.{number}"
+
+    @staticmethod
+    def _fanout_incomplete_message(
+        net_name: str,
+        failed_pads: list[str],
+        created_count: int,
+    ) -> str:
+        shown_limit = 12
+        shown = ", ".join(failed_pads[:shown_limit])
+        remaining = len(failed_pads) - shown_limit
+        if remaining > 0:
+            shown += f", and {remaining} more"
+        return (
+            f"Fanout incomplete for network {net_name!r}: created {created_count}, "
+            "but no collision-free trace/via position was found for "
+            f"{len(failed_pads)} pad(s): {shown}."
+        )
 
     @staticmethod
     def _pad_radius(pad) -> float:
@@ -902,10 +935,13 @@ class KiCadBoardAdapter:
             start = (pad.position.x, pad.position.y)
             if any(
                 obstacle[3] is not pad
-                and point_segment_distance((obstacle[0], obstacle[1]), start, candidate)
-                < obstacle[2]
-                + track_width_nm / 2
-                + self.FANOUT_PAD_CLEARANCE_NM
+                and self._fanout_trace_hits_pad(
+                    start,
+                    candidate,
+                    obstacle[3],
+                    layer,
+                    track_width_nm,
+                )
                 for obstacle in pad_obstacles
             ):
                 continue
@@ -921,6 +957,70 @@ class KiCadBoardAdapter:
                 continue
             return Vector2.from_xy(*candidate)
         return None
+
+    @classmethod
+    def _fanout_trace_hits_pad(
+        cls,
+        start,
+        end,
+        pad,
+        layer,
+        track_width_nm: int,
+    ) -> bool:
+        """Return whether a trace violates clearance to pad copper on its layer.
+
+        Pad-to-via placement deliberately uses a conservative circular bound because
+        a through via crosses every copper layer.  A trace, however, must not inherit
+        that bound: the half-diagonal of a long rectangular pad can be much larger
+        than its extent toward a parallel trace.  Transform the trace into each pad
+        copper shape's local coordinates and measure it against that shape's
+        axis-aligned rectangular envelope instead.
+        """
+        copper = pad.padstack.copper_layer(layer)
+        if copper is None or copper.size.x <= 0 or copper.size.y <= 0:
+            return False
+
+        angle = math.radians(pad.padstack.angle.degrees)
+        cosine = math.cos(angle)
+        sine = math.sin(angle)
+        center_x = pad.position.x + cosine * copper.offset.x - sine * copper.offset.y
+        center_y = pad.position.y + sine * copper.offset.x + cosine * copper.offset.y
+
+        def local(point):
+            relative_x = point[0] - center_x
+            relative_y = point[1] - center_y
+            return (
+                cosine * relative_x + sine * relative_y,
+                -sine * relative_x + cosine * relative_y,
+            )
+
+        local_start = local(start)
+        local_end = local(end)
+        half_width = copper.size.x / 2
+        half_height = copper.size.y / 2
+        rectangle = (
+            (-half_width, -half_height),
+            (half_width, -half_height),
+            (half_width, half_height),
+            (-half_width, half_height),
+        )
+        if any(
+            -half_width <= point[0] <= half_width
+            and -half_height <= point[1] <= half_height
+            for point in (local_start, local_end)
+        ):
+            distance = 0.0
+        else:
+            distance = min(
+                cls._segment_distance(
+                    local_start,
+                    local_end,
+                    edge_start,
+                    edge_end,
+                )
+                for edge_start, edge_end in zip(rectangle, rectangle[1:] + rectangle[:1])
+            )
+        return distance < track_width_nm / 2 + cls.FANOUT_PAD_CLEARANCE_NM
 
     @staticmethod
     def _segment_distance(start, end, obstacle_start, obstacle_end) -> float:

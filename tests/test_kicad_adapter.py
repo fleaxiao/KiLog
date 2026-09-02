@@ -633,6 +633,53 @@ def test_fanout_via_avoids_other_on_board_pads():
     assert via.position.x == source.position.x or via.position.y == source.position.y
 
 
+def test_fanout_trace_uses_rectangular_pad_clearance_instead_of_diagonal_radius():
+    footprint = with_id(FootprintInstance(), "fp-rectangular-clearance")
+    footprint.position = Vector2.from_xy(11_500_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    source.padstack.copper_layers[0].size = Vector2.from_xy(1_100_000, 3_700_000)
+
+    left_blocker = Pad()
+    left_blocker.position = Vector2.from_xy(7_750_000, 10_000_000)
+    left_blocker.net = Net(name="VCC")
+    left_blocker.pad_type = PadType.PT_SMD
+    left_blocker.padstack.copper_layers[0].size = Vector2.from_xy(
+        1_100_000, 3_700_000
+    )
+
+    right_blocker = Pad()
+    right_blocker.position = Vector2.from_xy(13_000_000, 10_000_000)
+    right_blocker.net = Net(name="VCC")
+    right_blocker.pad_type = PadType.PT_SMD
+    right_blocker.padstack.copper_layers[0].size = Vector2.from_xy(
+        1_100_000, 3_700_000
+    )
+
+    footprint.definition.add_item(source)
+    footprint.definition.add_item(left_blocker)
+    footprint.definition.add_item(right_blocker)
+    board = FillBoard(
+        [
+            footprint,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    KiCadBoardAdapter(object(), board).fanout_net("GND", 0.5)
+
+    track = board.created[0]
+    assert track.start.x == track.end.x == source.position.x
+    assert abs(track.end.y - track.start.y) == 2_350_000
+
+
 def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():
     footprint = with_id(FootprintInstance(), "fp-track-obstacle")
     footprint.position = Vector2.from_xy(9_000_000, 10_000_000)
@@ -794,6 +841,83 @@ def test_fanout_rejects_invalid_default_width():
 
     with pytest.raises(RecorderError, match="Width must be greater than zero"):
         adapter.fanout_net("GND", 0)
+
+
+def test_fanout_reports_pad_when_no_position_can_be_found():
+    footprint = with_id(FootprintInstance(), "fp-failed-fanout")
+    footprint.position = Vector2.from_xy(1_000_000, 1_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    footprint.reference_field.text.value = "L2"
+    pad = Pad()
+    pad.number = "1"
+    pad.position = footprint.position
+    pad.net = Net(name="GND")
+    pad.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(pad)
+    board = FillBoard(
+        [
+            footprint,
+            edge_segment("edge-1", (0, 0), (2_000_000, 0)),
+            edge_segment("edge-2", (2_000_000, 0), (2_000_000, 2_000_000)),
+            edge_segment("edge-3", (2_000_000, 2_000_000), (0, 2_000_000)),
+            edge_segment("edge-4", (0, 2_000_000), (0, 0)),
+        ]
+    )
+
+    with pytest.raises(
+        RecorderError,
+        match=r"Fanout incomplete.*created 0.*1 pad\(s\): L2\.1",
+    ):
+        KiCadBoardAdapter(object(), board).fanout_net("GND")
+
+    assert board.created == []
+
+
+def test_fanout_commits_successes_before_reporting_incomplete_pads(monkeypatch):
+    footprint = with_id(FootprintInstance(), "fp-partial-fanout")
+    footprint.position = Vector2.from_xy(9_000_000, 10_000_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+    footprint.reference_field.text.value = "U1"
+    successful = Pad()
+    successful.number = "1"
+    successful.position = Vector2.from_xy(10_000_000, 10_000_000)
+    successful.net = Net(name="GND")
+    successful.pad_type = PadType.PT_SMD
+    failed = Pad()
+    failed.number = "2"
+    failed.position = Vector2.from_xy(10_000_000, 15_000_000)
+    failed.net = Net(name="GND")
+    failed.pad_type = PadType.PT_SMD
+    footprint.definition.add_item(successful)
+    footprint.definition.add_item(failed)
+    board = FillBoard(
+        [
+            footprint,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+    adapter = KiCadBoardAdapter(object(), board)
+    find_position = adapter._find_fanout_position
+
+    def fail_second_pad(pad, *args, **kwargs):
+        if pad.number == "2":
+            return None
+        return find_position(pad, *args, **kwargs)
+
+    monkeypatch.setattr(adapter, "_find_fanout_position", fail_second_pad)
+
+    with pytest.raises(
+        RecorderError,
+        match=r"Fanout incomplete.*created 1.*1 pad\(s\): U1\.2",
+    ):
+        adapter.fanout_net("GND")
+
+    assert len(board.created) == 2
+    assert board.commit_count == 1
+    assert board.commit_message == "KiLog: fanout GND"
 
 
 def test_fanout_skips_pad_already_connected_to_via():

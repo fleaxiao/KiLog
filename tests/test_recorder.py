@@ -87,6 +87,189 @@ def test_poll_debounces_and_appends_event_to_log_json(tmp_path):
     assert "op" not in change
 
 
+def test_simultaneous_track_add_remove_and_modify_use_separate_steps(tmp_path):
+    initial = snapshot(
+        item("track-delete", "track", width=100_000),
+        item("track-modify", "track", width=100_000),
+    )
+    changed = snapshot(
+        item("track-add", "track", width=200_000),
+        item("track-modify", "track", width=300_000),
+    )
+    recorder = Recorder(FakeAdapter(tmp_path, [initial, changed]))
+    recorder.start(RecorderConfig())
+
+    recorder.end()
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert recorder.event_count == 3
+    assert [step["step"] for step in persisted["steps"]] == [1, 2, 3]
+    assert len({step["step_uuid"] for step in persisted["steps"]}) == 3
+
+    step_items = []
+    operations = set()
+    for step in persisted["steps"]:
+        item_ids = {
+            change.get("id")
+            or change["item"]["data"]["id"]["value"]
+            for change in step["changes"]
+        }
+        assert len(item_ids) == 1
+        step_items.extend(item_ids)
+        operations.update(change["operation"] for change in step["changes"])
+
+    assert set(step_items) == {"track-add", "track-delete", "track-modify"}
+    assert operations == {"routing.add", "routing.remove", "routing.modify"}
+
+
+def test_connected_old_and_new_segments_in_one_path_edit_share_a_step(tmp_path):
+    net = {"name": "GND"}
+    initial = snapshot(
+        item(
+            "old-a",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "100", "y_nm": "0"},
+            net=net,
+        ),
+        item(
+            "old-b",
+            "track",
+            start={"x_nm": "100", "y_nm": "0"},
+            end={"x_nm": "200", "y_nm": "0"},
+            net=net,
+        ),
+    )
+    rerouted = snapshot(
+        item(
+            "new-a",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "120", "y_nm": "50"},
+            net=net,
+        ),
+        item(
+            "new-b",
+            "track",
+            start={"x_nm": "120", "y_nm": "50"},
+            end={"x_nm": "200", "y_nm": "0"},
+            net=net,
+        ),
+    )
+    recorder = Recorder(FakeAdapter(tmp_path, [initial, rerouted]))
+    recorder.start(RecorderConfig())
+
+    recorder.end()
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert recorder.event_count == 1
+    assert len(persisted["steps"]) == 1
+    changes = persisted["steps"][0]["changes"]
+    assert {change["operation"] for change in changes} == {
+        "routing.add",
+        "routing.remove",
+    }
+    assert {
+        change.get("id") or change["item"]["data"]["id"]["value"]
+        for change in changes
+    } == {"old-a", "old-b", "new-a", "new-b"}
+
+
+def test_deleting_then_redrawing_connected_path_is_coalesced_across_polls(tmp_path):
+    net = {"name": "GND"}
+    initial = snapshot(
+        item(
+            "old-a",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "100", "y_nm": "0"},
+            net=net,
+        ),
+        item(
+            "old-b",
+            "track",
+            start={"x_nm": "100", "y_nm": "0"},
+            end={"x_nm": "200", "y_nm": "0"},
+            net=net,
+        ),
+    )
+    deleted = snapshot()
+    redrawn = snapshot(
+        item(
+            "new-a",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "120", "y_nm": "50"},
+            net=net,
+        ),
+        item(
+            "new-b",
+            "track",
+            start={"x_nm": "120", "y_nm": "50"},
+            end={"x_nm": "200", "y_nm": "0"},
+            net=net,
+        ),
+    )
+    adapter = FakeAdapter(
+        tmp_path,
+        [initial, deleted, deleted, redrawn, redrawn],
+    )
+    recorder = Recorder(adapter)
+    recorder.start(RecorderConfig(settle_seconds=0))
+
+    recorder.poll(now=1)
+    recorder.poll(now=2)
+    assert recorder.event_count == 1
+    recorder.poll(now=3)
+    recorder.poll(now=4)
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert recorder.event_count == 1
+    assert len(persisted["steps"]) == 1
+    assert {change["operation"] for change in persisted["steps"][0]["changes"]} == {
+        "routing.add",
+        "routing.remove",
+    }
+
+
+def test_deleting_then_drawing_an_unconnected_track_keeps_separate_steps(tmp_path):
+    net = {"name": "GND"}
+    initial = snapshot(
+        item(
+            "old",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "100", "y_nm": "0"},
+            net=net,
+        )
+    )
+    deleted = snapshot()
+    unrelated = snapshot(
+        item(
+            "new",
+            "track",
+            start={"x_nm": "1000", "y_nm": "0"},
+            end={"x_nm": "1100", "y_nm": "0"},
+            net=net,
+        )
+    )
+    adapter = FakeAdapter(
+        tmp_path,
+        [initial, deleted, deleted, unrelated, unrelated],
+    )
+    recorder = Recorder(adapter)
+    recorder.start(RecorderConfig(settle_seconds=0))
+
+    for now in range(1, 5):
+        recorder.poll(now=now)
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert recorder.event_count == 2
+    assert [
+        step["changes"][0]["operation"] for step in persisted["steps"]
+    ] == ["routing.remove", "routing.add"]
+
+
 def test_persisted_field_changes_use_target_only_format():
     replaced = Recorder._persisted_change(
         {
@@ -370,6 +553,97 @@ def test_end_flushes_and_stops(tmp_path):
     assert not recorder.recording
     persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
     assert len(persisted["steps"]) == 1
+
+
+def test_end_moves_all_silkscreen_adjustments_to_one_final_step(tmp_path):
+    initial = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={"text": {"text": {"position": {"x_nm": "110"}}}},
+        )
+    )
+    silk_once = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={"text": {"text": {"position": {"x_nm": "160"}}}},
+        )
+    )
+    with_via = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={"text": {"text": {"position": {"x_nm": "160"}}}},
+        ),
+        item("via-1", "via", diameter=600000),
+    )
+    silk_final = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            position={"x_nm": "100", "y_nm": "200"},
+            reference_field={"text": {"text": {"position": {"x_nm": "190"}}}},
+        ),
+        item("via-1", "via", diameter=600000),
+    )
+    adapter = FakeAdapter(
+        tmp_path,
+        [initial, silk_once, silk_once, with_via, with_via, silk_final, silk_final],
+    )
+    recorder = Recorder(adapter)
+    recorder.start(RecorderConfig(settle_seconds=0))
+    for now in range(1, 7):
+        recorder.poll(now=now)
+
+    recorder.end()
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert [step["step"] for step in persisted["steps"]] == [1, 2]
+    assert [change["operation"] for change in persisted["steps"][0]["changes"]] == [
+        "via.add"
+    ]
+    final_changes = persisted["steps"][-1]["changes"]
+    assert [change["operation"] for change in final_changes] == [
+        "footprint.field.modify"
+    ]
+    assert final_changes[0]["value"] == "190"
+
+
+def test_end_splits_silkscreen_changes_from_a_mixed_step(tmp_path):
+    initial = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            reference_field={"text": {"text": {"position": {"x_nm": "110"}}}},
+        ),
+        item("zone-1", "zone", priority=1),
+    )
+    changed = snapshot(
+        item(
+            "fp-1",
+            "footprint",
+            reference_field={"text": {"text": {"position": {"x_nm": "160"}}}},
+        ),
+        item("zone-1", "zone", priority=2),
+    )
+    recorder = Recorder(FakeAdapter(tmp_path, [initial, changed]))
+    recorder.start(RecorderConfig())
+
+    recorder.end()
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert [step["step"] for step in persisted["steps"]] == [1, 2]
+    assert {change["operation"] for change in persisted["steps"][0]["changes"]} == {
+        "zone.modify"
+    }
+    assert {change["operation"] for change in persisted["steps"][1]["changes"]} == {
+        "footprint.field.modify"
+    }
+    assert persisted["steps"][0]["step_uuid"] != persisted["steps"][1]["step_uuid"]
 
 
 def test_undo_without_history_is_rejected(tmp_path):

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Show a configurable fanout drill diameter in the UI, defaulting to 0.2 mm.
+- Reduce the minimum fanout length from 1.0 mm to 0.5 mm.
+- Default the fanout track width to 0.3 mm.
+- Show a configurable fanout via diameter in the UI, defaulting to 0.4 mm.
+- Avoid false restore failures when KiCad repacks an otherwise equivalent footprint definition.
+- Record every track and via created by one fanout command as a single step.
 - Continue a replay as a recording from its current step, truncating later steps.
 - Prevent fanout traces and vias from touching existing traces on other nets.
 - Prefer F.SilkS or F.Fab magnetic body outlines, with pad geometry as fallback.

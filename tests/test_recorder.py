@@ -175,6 +175,41 @@ def test_connected_old_and_new_segments_in_one_path_edit_share_a_step(tmp_path):
     } == {"old-a", "old-b", "new-a", "new-b"}
 
 
+def test_single_step_flush_keeps_disconnected_fanout_items_together(tmp_path):
+    net = {"name": "GND"}
+    initial = snapshot()
+    fanned_out = snapshot(
+        item(
+            "track-1",
+            "track",
+            start={"x_nm": "0", "y_nm": "0"},
+            end={"x_nm": "100", "y_nm": "0"},
+            net=net,
+        ),
+        item("via-1", "via", position={"x_nm": "100", "y_nm": "0"}, net=net),
+        item(
+            "track-2",
+            "track",
+            start={"x_nm": "1000", "y_nm": "0"},
+            end={"x_nm": "1100", "y_nm": "0"},
+            net=net,
+        ),
+        item("via-2", "via", position={"x_nm": "1100", "y_nm": "0"}, net=net),
+    )
+    recorder = Recorder(FakeAdapter(tmp_path, [initial, fanned_out]))
+    recorder.start(RecorderConfig())
+
+    recorder.flush(single_step=True)
+
+    persisted = json.loads((tmp_path / "ref.json").read_text(encoding="utf-8"))
+    assert recorder.event_count == 1
+    assert len(persisted["steps"]) == 1
+    assert {
+        change.get("id") or change["item"]["data"]["id"]["value"]
+        for change in persisted["steps"][0]["changes"]
+    } == {"track-1", "via-1", "track-2", "via-2"}
+
+
 def test_deleting_then_redrawing_connected_path_is_coalesced_across_polls(tmp_path):
     net = {"name": "GND"}
     initial = snapshot(

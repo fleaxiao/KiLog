@@ -53,3 +53,39 @@ class BoardSnapshot:
             fingerprint=digest,
             captured_at=captured_at or utc_now(),
         )
+
+
+def snapshots_match_restored_state(
+    restored: BoardSnapshot,
+    target: BoardSnapshot,
+) -> bool:
+    """Compare restored states using the semantics KiLog can replay.
+
+    KiCad may repack a footprint's library definition when a complete
+    ``FootprintInstance`` is sent through the IPC API. The repacked protobuf
+    can differ in default fields or child ordering even though the instance's
+    replayable state was restored correctly. Tracks, vias, zones, and board
+    graphics remain exact because their complete definitions are replayed.
+    """
+    if restored.fingerprint == target.fingerprint:
+        return True
+    if set(restored.items) != set(target.items):
+        return False
+
+    for item_uuid, expected in target.items.items():
+        actual = restored.items[item_uuid]
+        if actual.kind != expected.kind or actual.type_name != expected.type_name:
+            return False
+        if expected.kind != "footprint":
+            if actual.log_value() != expected.log_value():
+                return False
+            continue
+        actual_instance = {
+            key: value for key, value in actual.data.items() if key != "definition"
+        }
+        expected_instance = {
+            key: value for key, value in expected.data.items() if key != "definition"
+        }
+        if actual_instance != expected_instance:
+            return False
+    return True

@@ -700,7 +700,7 @@ class KiLogWindow(wx.Frame):
             self.pcb_entry.editor.SetToolTip(default_name)
         details_row.Add(path_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         details_row.Add(output, 1, wx.ALIGN_CENTER_VERTICAL)
-        details_row.AddSpacer(14)
+        details_row.AddSpacer(16)
         details_row.Add(log_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         details_row.Add(self.pcb_entry, 0, wx.ALIGN_CENTER_VERTICAL)
         record_sizer.Add(
@@ -795,7 +795,7 @@ class KiLogWindow(wx.Frame):
         self.replay_file_text = UnderlinedPathDisplay(
             replay_page,
             "No log selected",
-            size=(300, log_height),
+            size=(path_size.GetWidth(), log_height),
             font=self._font(META_FONT_SIZE, mono=True),
             button_handler=self._on_load_replay,
         )
@@ -832,9 +832,8 @@ class KiLogWindow(wx.Frame):
         details_row.SetMinSize(0, shared_header_height)
         replay_header.SetMinSize(0, shared_header_height)
         replay_header.Add(replay_path_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        replay_header.Add(self.replay_file_text, 0, wx.ALIGN_CENTER_VERTICAL)
+        replay_header.Add(self.replay_file_text, 1, wx.ALIGN_CENTER_VERTICAL)
         replay_header.AddSpacer(16)
-        replay_header.AddStretchSpacer()
         replay_header.Add(speed_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         replay_header.Add(self.speed_choice, 0, wx.ALIGN_CENTER_VERTICAL)
         replay_sizer.Add(
@@ -974,13 +973,29 @@ class KiLogWindow(wx.Frame):
         fanout_width_label.SetForegroundColour(MUTED)
         fanout_width_label.SetFont(self._font(UI_FONT_SIZE))
         self.fanout_width_entry = self._text_field(
-            skill_page, "0.5", size=(52, 22), centered=True
+            skill_page, "0.3", size=(40, 22), centered=True
+        )
+        fanout_via_label = wx.StaticText(skill_page, label="Via Ø:")
+        fanout_via_label.SetForegroundColour(MUTED)
+        fanout_via_label.SetFont(self._font(UI_FONT_SIZE))
+        self.fanout_via_entry = self._text_field(
+            skill_page, "0.4", size=(40, 22), centered=True
+        )
+        fanout_drill_label = wx.StaticText(skill_page, label="Drill Ø:")
+        fanout_drill_label.SetForegroundColour(MUTED)
+        fanout_drill_label.SetFont(self._font(UI_FONT_SIZE))
+        self.fanout_drill_entry = self._text_field(
+            skill_page, "0.2", size=(40, 22), centered=True
         )
         fanout_row.Add(self.fanout_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         fanout_row.Add(fanout_net_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
         fanout_row.Add(self.fanout_net_entry, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         fanout_row.Add(fanout_width_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        fanout_row.Add(self.fanout_width_entry, 0, wx.ALIGN_CENTER_VERTICAL)
+        fanout_row.Add(self.fanout_width_entry, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        fanout_row.Add(fanout_via_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        fanout_row.Add(self.fanout_via_entry, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        fanout_row.Add(fanout_drill_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        fanout_row.Add(self.fanout_drill_entry, 0, wx.ALIGN_CENTER_VERTICAL)
         skill_sizer.Add(fanout_row, 0, wx.EXPAND | wx.ALL, 8)
         skill_sizer.Add(
             copper_row,
@@ -1395,10 +1410,20 @@ class KiLogWindow(wx.Frame):
 
     def _on_fanout(self, _event: wx.CommandEvent) -> None:
         def action() -> None:
-            self.recorder.adapter.fanout_net(
-                self.fanout_net_entry.GetValue().strip(),
-                self.fanout_width_entry.GetValue(),
-            )
+            # Do not merge an edit that was already pending with this command.
+            # All tracks and vias created by one fanout command form one step,
+            # even though the normal recorder splits disconnected routing edits.
+            self.recorder.flush()
+            try:
+                self.recorder.adapter.fanout_net(
+                    self.fanout_net_entry.GetValue().strip(),
+                    self.fanout_width_entry.GetValue(),
+                    self.fanout_via_entry.GetValue(),
+                    self.fanout_drill_entry.GetValue(),
+                )
+            finally:
+                self.recorder.flush(single_step=True)
+                self._refresh_record()
 
         self._run_action(action)
 

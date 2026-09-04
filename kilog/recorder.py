@@ -8,7 +8,7 @@ from typing import Protocol, TYPE_CHECKING
 from uuid import uuid4
 
 from .diffing import build_event
-from .model import BoardSnapshot
+from .model import BoardSnapshot, snapshots_match_restored_state
 from .storage import (
     normalize_stem,
     snapshot_path,
@@ -43,7 +43,13 @@ class BoardAdapter(Protocol):
 
     def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int: ...
 
-    def fanout_net(self, net_name: str, default_width_mm: float | str = 0.5) -> int: ...
+    def fanout_net(
+        self,
+        net_name: str,
+        default_width_mm: float | str = 0.3,
+        via_diameter_mm: float | str = 0.4,
+        via_drill_mm: float | str = 0.2,
+    ) -> int: ...
 
     def undo_to(self, target: BoardSnapshot) -> tuple[BoardSnapshot, str]: ...
 
@@ -129,7 +135,7 @@ class Recorder:
 
         baseline = branch.snapshots[-1]
         current = self.adapter.snapshot()
-        if current.fingerprint != baseline.fingerprint:
+        if not snapshots_match_restored_state(current, baseline):
             raise RecorderError("The PCB no longer matches the selected replay position.")
 
         events = [
@@ -352,21 +358,32 @@ class Recorder:
             return None
         return self._commit(current)
 
-    def flush(self) -> dict | None:
+    def flush(self, *, single_step: bool = False) -> dict | None:
+        """Record the live board, optionally keeping every change in one step."""
         if not self.recording or self.baseline is None or self.preview_position is not None:
             return None
         current = self.adapter.snapshot()
         if current.fingerprint == self.baseline.fingerprint:
             self.pending = None
             return None
-        return self._commit(current)
+        return self._commit(current, single_step=single_step)
 
-    def _commit(self, current: BoardSnapshot) -> dict | None:
+    def _commit(
+        self,
+        current: BoardSnapshot,
+        *,
+        single_step: bool = False,
+    ) -> dict | None:
         assert self.baseline is not None
         previous = self.baseline
         new_events = []
         new_history = []
-        for target in self._recording_targets(self.baseline, current):
+        targets = (
+            [current]
+            if single_step
+            else self._recording_targets(self.baseline, current)
+        )
+        for target in targets:
             event = build_event(
                 previous,
                 target,
@@ -663,7 +680,7 @@ class Recorder:
             snapshot,
             f"KiLog: preview recorded position {target}",
         )
-        if restored.fingerprint != snapshot.fingerprint:
+        if not snapshots_match_restored_state(restored, snapshot):
             raise RecorderError(f"KiCad could not preview recorded position {target}.")
         self.pending = None
         self.preview_position = None if target == len(self.history) else target
@@ -676,7 +693,7 @@ class Recorder:
         target = self.preview_position
         snapshot = self.history[target]
         current = self.adapter.snapshot()
-        if current.fingerprint != snapshot.fingerprint:
+        if not snapshots_match_restored_state(current, snapshot):
             raise RecorderError("The PCB no longer matches the selected record preview.")
         assert self.log_path is not None
         remaining_events = self.events[:target]
@@ -695,7 +712,7 @@ class Recorder:
             raise RecorderError("There are no recorded operations to undo.")
         target = self.history[-1]
         restored, strategy = self.adapter.undo_to(target)
-        if restored.fingerprint != target.fingerprint:
+        if not snapshots_match_restored_state(restored, target):
             log_name = self.log_path.name if self.log_path else "the log file"
             raise RecorderError(f"KiCad could not be restored; {log_name} was left unchanged.")
         assert self.log_path is not None

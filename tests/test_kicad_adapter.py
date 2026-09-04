@@ -487,11 +487,11 @@ def test_fanout_creates_trace_and_via_for_matching_smd_pads_only():
     assert track.net.name == via.net.name == "GND"
     assert track.layer == BoardLayer.BL_F_Cu
     assert (track.start.x, track.start.y) == (12_000_000, 10_000_000)
-    assert (track.end.x, track.end.y) == (13_000_000, 10_000_000)
-    assert (via.position.x, via.position.y) == (13_000_000, 10_000_000)
+    assert (track.end.x, track.end.y) == (12_500_000, 10_000_000)
+    assert (via.position.x, via.position.y) == (12_500_000, 10_000_000)
     assert track.width == 400_000
-    assert via.diameter == 600_000
-    assert via.drill_diameter == 300_000
+    assert via.diameter == 400_000
+    assert via.drill_diameter == 200_000
     assert board.commit_message == "KiLog: fanout GND"
 
 
@@ -522,7 +522,7 @@ def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
     assert max(
         abs(via.position.x - pad.position.x),
         abs(via.position.y - pad.position.y),
-    ) >= 2_000_000 + 300_000 + 200_000
+    ) >= 2_000_000 + 200_000 + 200_000
     assert via.position.x == pad.position.x or via.position.y == pad.position.y
     assert 500_000 <= via.position.x <= 19_500_000
     assert 500_000 <= via.position.y <= 19_500_000
@@ -552,7 +552,7 @@ def test_fanout_via_clears_board_edge_by_at_least_point_five_mm():
     assert count == 1
     via = board.created[1]
     # The preferred outward candidate has its center inside the board at x=0.4 mm,
-    # but its 0.6 mm via would leave only 0.1 mm to Edge.Cuts and must be rejected.
+    # but its 0.4 mm via would leave only 0.2 mm to Edge.Cuts and must be rejected.
     assert (via.position.x, via.position.y) != (400_000, 10_000_000)
     assert min(
         via.position.x,
@@ -677,7 +677,7 @@ def test_fanout_trace_uses_rectangular_pad_clearance_instead_of_diagonal_radius(
 
     track = board.created[0]
     assert track.start.x == track.end.x == source.position.x
-    assert abs(track.end.y - track.start.y) == 2_350_000
+    assert abs(track.end.y - track.start.y) == 2_250_000
 
 
 def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():
@@ -801,7 +801,7 @@ def test_fanout_chooses_short_axis_of_rectangular_pad():
 
     track = board.created[0]
     assert track.end.x == track.start.x
-    assert abs(track.end.y - track.start.y) == 1_000_000
+    assert abs(track.end.y - track.start.y) == 900_000
 
 
 def test_fanout_inherits_width_from_trace_connected_to_pad():
@@ -841,6 +841,35 @@ def test_fanout_rejects_invalid_default_width():
 
     with pytest.raises(RecorderError, match="Width must be greater than zero"):
         adapter.fanout_net("GND", 0)
+
+
+@pytest.mark.parametrize(
+    ("diameter", "message"),
+    [
+        ("wide", "Via diameter must be a number"),
+        (0.2, "Via diameter must be greater than the Drill diameter"),
+    ],
+)
+def test_fanout_rejects_invalid_via_diameter(diameter, message):
+    adapter = KiCadBoardAdapter(object(), FillBoard([]))
+
+    with pytest.raises(RecorderError, match=message):
+        adapter.fanout_net("GND", 0.1, diameter)
+
+
+@pytest.mark.parametrize(
+    ("drill", "message"),
+    [
+        ("narrow", "Drill diameter must be a number"),
+        (0, "Drill diameter must be greater than zero"),
+        (0.4, "Via diameter must be greater than the Drill diameter"),
+    ],
+)
+def test_fanout_rejects_invalid_via_drill(drill, message):
+    adapter = KiCadBoardAdapter(object(), FillBoard([]))
+
+    with pytest.raises(RecorderError, match=message):
+        adapter.fanout_net("GND", 0.1, 0.4, drill)
 
 
 def test_fanout_reports_pad_when_no_position_can_be_found():

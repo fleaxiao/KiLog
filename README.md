@@ -82,12 +82,15 @@ them in KiCad when ready. Active recording captures them as `zone.add` operation
 
 ### Fanout
 
-Enter an existing net and a fallback track width in millimetres, then choose
-**Fanout**. For each matching on-board SMD pad, KiLog creates an orthogonal trace
-and a 0.6/0.3 mm through via in one undoable commit.
+Enter an existing net and a fallback track width in millimetres (0.3 mm by
+default), then choose **Fanout**. For each matching on-board SMD pad, KiLog creates an orthogonal trace
+and a configurable-diameter through via in one undoable commit. The UI defaults
+to a 0.4 mm via with a configurable 0.2 mm drill.
 
 Fanout behavior:
 
+- Candidate vias start at least 0.5 mm from the pad center and are tried at
+  0.5 mm increments, increasing the initial distance when pad geometry requires it.
 - Front-side footprints use `F.Cu`; back-side footprints use `B.Cu`.
 - A connected same-net trace supplies the width; otherwise the UI value is used.
 - Via copper stays at least 0.5 mm from the closed `Edge.Cuts` outline and

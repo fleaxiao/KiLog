@@ -38,7 +38,7 @@ from .board_outline import (
     point_segment_distance,
 )
 from .diffing import edge_segments
-from .model import BoardSnapshot, ItemState
+from .model import BoardSnapshot, ItemState, snapshots_match_restored_state
 from .recorder import RecorderError
 from .replay import ReplayError
 
@@ -86,10 +86,12 @@ class KiCadBoardAdapter:
     """
 
     REVERT_SETTLE_SECONDS = 0.65
-    FANOUT_LENGTH_NM = 1_000_000
-    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.5
-    FANOUT_VIA_DIAMETER_NM = 600_000
-    FANOUT_VIA_DRILL_NM = 300_000
+    FANOUT_LENGTH_NM = 500_000
+    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.3
+    FANOUT_DEFAULT_VIA_DIAMETER_MM = 0.4
+    FANOUT_DEFAULT_VIA_DRILL_MM = 0.2
+    FANOUT_VIA_DIAMETER_NM = 400_000
+    FANOUT_VIA_DRILL_NM = 200_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
     FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
     FANOUT_SEARCH_STEP_NM = 500_000
@@ -620,6 +622,8 @@ class KiCadBoardAdapter:
         self,
         net_name: str,
         default_width_mm: float | str = FANOUT_DEFAULT_TRACK_WIDTH_MM,
+        via_diameter_mm: float | str = FANOUT_DEFAULT_VIA_DIAMETER_MM,
+        via_drill_mm: float | str = FANOUT_DEFAULT_VIA_DRILL_MM,
     ) -> int:
         """Fan out on-board SMD pads while keeping vias clear of pads and edges."""
         requested_net = net_name.strip()
@@ -639,6 +643,20 @@ class KiCadBoardAdapter:
             raise RecorderError("Fanout Width must be a number in millimetres.") from exc
         if default_width_nm <= 0:
             raise RecorderError("Fanout Width must be greater than zero.")
+        try:
+            via_diameter_nm = round(float(via_diameter_mm) * 1_000_000)
+        except (TypeError, ValueError) as exc:
+            raise RecorderError("Fanout Via diameter must be a number in millimetres.") from exc
+        try:
+            via_drill_nm = round(float(via_drill_mm) * 1_000_000)
+        except (TypeError, ValueError) as exc:
+            raise RecorderError("Fanout Drill diameter must be a number in millimetres.") from exc
+        if via_drill_nm <= 0:
+            raise RecorderError("Fanout Drill diameter must be greater than zero.")
+        if via_diameter_nm <= via_drill_nm:
+            raise RecorderError(
+                "Fanout Via diameter must be greater than the Drill diameter."
+            )
 
         snapshot = self.snapshot()
         items = [state.raw_item for state in snapshot.items.values()]
@@ -700,6 +718,7 @@ class KiCadBoardAdapter:
                     existing_tracks,
                     max_search,
                     track_width,
+                    via_diameter_nm,
                 )
                 if via_position is None:
                     failed_pads.append(self._fanout_pad_label(footprint, pad))
@@ -715,12 +734,12 @@ class KiCadBoardAdapter:
                 via = Via()
                 via.net = net
                 via.position = via_position
-                via.diameter = self.FANOUT_VIA_DIAMETER_NM
-                via.drill_diameter = self.FANOUT_VIA_DRILL_NM
+                via.diameter = via_diameter_nm
+                via.drill_diameter = via_drill_nm
 
                 created.extend((track, via))
                 via_obstacles.append(
-                    (via_position.x, via_position.y, self.FANOUT_VIA_DIAMETER_NM / 2)
+                    (via_position.x, via_position.y, via_diameter_nm / 2)
                 )
                 fanout_count += 1
 
@@ -883,8 +902,9 @@ class KiCadBoardAdapter:
         existing_tracks: list[Track | ArcTrack],
         max_search: float,
         track_width_nm: int,
+        via_diameter_nm: int,
     ) -> Vector2 | None:
-        via_radius = self.FANOUT_VIA_DIAMETER_NM / 2
+        via_radius = via_diameter_nm / 2
         radial_x = pad.position.x - footprint.position.x
         radial_y = pad.position.y - footprint.position.y
         cardinal_directions = ((1, 0), (0, 1), (-1, 0), (0, -1))
@@ -1169,7 +1189,7 @@ class KiCadBoardAdapter:
         response = self.kicad.run_action("common.Interactive.undo")
         if response.status == RAS_OK:
             current = self._snapshot_with_retry()
-            if current.fingerprint == target.fingerprint:
+            if snapshots_match_restored_state(current, target):
                 return current, "native"
 
         restored = self._restore_exactly(target)
@@ -1209,7 +1229,7 @@ class KiCadBoardAdapter:
             raise
 
         restored = self._snapshot_with_retry()
-        if restored.fingerprint != target.fingerprint:
+        if not snapshots_match_restored_state(restored, target):
             raise RecorderError("The restored object snapshot still differs from the target state.")
         return restored
 

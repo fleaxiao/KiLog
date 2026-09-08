@@ -16,6 +16,7 @@ from kipy.board_types import (
     Track,
     Via,
     Zone,
+    ZoneConnectionStyle,
 )
 from kipy.geometry import Vector2
 
@@ -282,6 +283,13 @@ def test_fill_board_creates_recordable_zone_per_selected_layer():
     assert all(len(zone.outline.outline.nodes) == 4 for zone in board.created)
     assert board.commit_message == "KiLog: create board zones for GND"
     assert not board.refilled
+    for zone in board.created:
+        restored = Zone(zone.proto)
+        connection = restored.proto.copper_settings.connection
+        assert connection.zone_connection == ZoneConnectionStyle.ZCS_THERMAL
+        assert connection.thermal_spokes.gap.value_nm == 500_000
+        assert connection.thermal_spokes.width.value_nm == 500_000
+        assert connection.thermal_spokes.width.value_nm >= restored.min_thickness
 
 
 def test_magnetic_void_prefers_f_silkscreen_body_over_f_fab():
@@ -418,6 +426,10 @@ def test_fill_board_adds_one_local_zone_for_same_net_pads_in_a_footprint():
     assert local_zone.net.name == "VCC"
     assert list(local_zone.layers) == [BoardLayer.BL_F_Cu]
     assert local_zone.priority == 1
+    connection = Zone(local_zone.proto).proto.copper_settings.connection
+    assert connection.zone_connection == ZoneConnectionStyle.ZCS_THERMAL
+    assert connection.thermal_spokes.gap.value_nm == 500_000
+    assert connection.thermal_spokes.width.value_nm == 500_000
     assert [(node.point.x, node.point.y) for node in local_zone.outline.outline.nodes] == [
         (5_750_000, 3_750_000),
         (14_250_000, 3_750_000),
@@ -1064,3 +1076,11 @@ def test_replay_zone_refill_rebuilds_derived_copper_polygons():
     assert result.items["zone-front"].data["filled"] is True
     assert board.refilled
     assert board.commit_count == 1
+
+
+def test_portable_skill_uses_same_serialized_copper_settings():
+    import skill
+
+    expected = KiCadBoardAdapter._new_copper_zone()
+    actual = skill.KiCadBoardAdapter._new_copper_zone()
+    assert actual.proto.copper_settings == expected.proto.copper_settings

@@ -1,5 +1,641 @@
 from __future__ import annotations
 
+"""Portable KiLog Skill functions for the active KiCad PCB Editor.
+
+This module is intentionally self-contained: it imports no files from the KiLog
+plugin.  It requires only the same external runtime as the plugin
+(``kicad-python>=0.7.1,<0.8``) and an open PCB Editor with IPC enabled.
+"""
+
+
+class RecorderError(RuntimeError):
+    """Raised when a Skill operation cannot be completed."""
+
+
+class ReplayError(RuntimeError):
+    """Compatibility error used by the embedded adapter implementation."""
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import hashlib
+import json
+from typing import Any, Mapping
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+@dataclass(frozen=True)
+class ItemState:
+    item_uuid: str
+    kind: str
+    type_name: str
+    data: Mapping[str, Any]
+    raw_item: Any = field(default=None, compare=False, repr=False)
+
+    def log_value(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "type": self.type_name,
+            "data": self.data,
+        }
+
+
+@dataclass(frozen=True)
+class BoardSnapshot:
+    board_name: str
+    items: Mapping[str, ItemState]
+    fingerprint: str
+    captured_at: str
+
+    @classmethod
+    def create(
+        cls,
+        board_name: str,
+        items: Mapping[str, ItemState],
+        captured_at: str | None = None,
+    ) -> "BoardSnapshot":
+        comparable = {item_id: state.log_value() for item_id, state in sorted(items.items())}
+        digest = hashlib.sha256(canonical_json(comparable).encode("utf-8")).hexdigest()
+        return cls(
+            board_name=board_name,
+            items=dict(items),
+            fingerprint=digest,
+            captured_at=captured_at or utc_now(),
+        )
+
+
+def snapshots_match_restored_state(
+    restored: BoardSnapshot,
+    target: BoardSnapshot,
+) -> bool:
+    """Compare restored states using the semantics KiLog can replay.
+
+    KiCad may repack a footprint's library definition when a complete
+    ``FootprintInstance`` is sent through the IPC API. The repacked protobuf
+    can differ in default fields or child ordering even though the instance's
+    replayable state was restored correctly. Tracks, vias, zones, and board
+    graphics remain exact because their complete definitions are replayed.
+    """
+    if restored.fingerprint == target.fingerprint:
+        return True
+    if set(restored.items) != set(target.items):
+        return False
+
+    for item_uuid, expected in target.items.items():
+        actual = restored.items[item_uuid]
+        if actual.kind != expected.kind or actual.type_name != expected.type_name:
+            return False
+        if expected.kind != "footprint":
+            if actual.log_value() != expected.log_value():
+                return False
+            continue
+        actual_instance = {
+            key: value for key, value in actual.data.items() if key != "definition"
+        }
+        expected_instance = {
+            key: value for key, value in expected.data.items() if key != "definition"
+        }
+        if actual_instance != expected_instance:
+            return False
+    return True
+
+
+
+from collections.abc import Iterable
+import math
+
+
+Point = tuple[float, float]
+Segment = tuple[Point, Point]
+
+
+def _near(left: Point, right: Point, tolerance: float) -> bool:
+    return abs(left[0] - right[0]) <= tolerance and abs(left[1] - right[1]) <= tolerance
+
+
+def closed_outline_loops(
+    segments: Iterable[Segment],
+    tolerance: float = 1.0,
+) -> list[list[Point]]:
+    """Join unordered Edge.Cuts segments into closed polygon loops."""
+    remaining = list(segments)
+    loops: list[list[Point]] = []
+    while remaining:
+        start, end = remaining.pop(0)
+        loop = [start, end]
+        while not _near(loop[-1], loop[0], tolerance):
+            for index, (candidate_start, candidate_end) in enumerate(remaining):
+                if _near(loop[-1], candidate_start, tolerance):
+                    loop.append(candidate_end)
+                    remaining.pop(index)
+                    break
+                if _near(loop[-1], candidate_end, tolerance):
+                    loop.append(candidate_start)
+                    remaining.pop(index)
+                    break
+            else:
+                return []
+        loop.pop()
+        if len(loop) >= 3:
+            loops.append(loop)
+    return loops
+
+
+def signed_area(points: list[Point]) -> float:
+    return sum(
+        left[0] * right[1] - right[0] * left[1]
+        for left, right in zip(points, [*points[1:], points[0]])
+    ) / 2.0
+
+
+def ordered_board_loops(segments: Iterable[Segment]) -> list[list[Point]]:
+    """Return the largest board outline first, followed by internal cut-outs."""
+    loops = closed_outline_loops(segments)
+    return sorted(loops, key=lambda loop: abs(signed_area(loop)), reverse=True)
+
+
+def point_in_polygon(point: Point, polygon: list[Point]) -> bool:
+    """Return whether a point is inside a polygon using an even-odd ray cast."""
+    x, y = point
+    inside = False
+    for left, right in zip(polygon, [*polygon[1:], polygon[0]]):
+        if (left[1] > y) == (right[1] > y):
+            continue
+        crossing_x = left[0] + (y - left[1]) * (right[0] - left[0]) / (
+            right[1] - left[1]
+        )
+        if x < crossing_x:
+            inside = not inside
+    return inside
+
+
+def point_inside_board(point: Point, loops: list[list[Point]]) -> bool:
+    """Return whether a point is in the outer board polygon and outside cut-outs."""
+    if not loops:
+        return False
+    on_outer_edge = any(
+        point_segment_distance(point, start, end) <= 1.0
+        for start, end in zip(loops[0], [*loops[0][1:], loops[0][0]])
+    )
+    if not on_outer_edge and not point_in_polygon(point, loops[0]):
+        return False
+    return not any(
+        point_in_polygon(point, hole)
+        or any(
+            point_segment_distance(point, start, end) <= 1.0
+            for start, end in zip(hole, [*hole[1:], hole[0]])
+        )
+        for hole in loops[1:]
+    )
+
+
+def point_segment_distance(point: Point, start: Point, end: Point) -> float:
+    """Return the shortest distance between a point and a line segment."""
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    if dx == 0 and dy == 0:
+        return math.hypot(point[0] - start[0], point[1] - start[1])
+    ratio = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / (
+        dx * dx + dy * dy
+    )
+    ratio = max(0.0, min(1.0, ratio))
+    nearest = (start[0] + ratio * dx, start[1] + ratio * dy)
+    return math.hypot(point[0] - nearest[0], point[1] - nearest[1])
+
+
+def circle_inside_board(center: Point, radius: float, loops: list[list[Point]]) -> bool:
+    """Return whether a circle is fully inside the board and outside cut-outs."""
+    if not point_inside_board(center, loops):
+        return False
+    return all(
+        point_segment_distance(center, start, end) >= radius
+        for loop in loops
+        for start, end in zip(loop, [*loop[1:], loop[0]])
+    )
+
+
+
+from collections import Counter
+import math
+from typing import Any
+from uuid import uuid4
+
+
+
+FOOTPRINT_SILK_FIELD_NAMES = (
+    "reference_field",
+    "value_field",
+)
+
+
+def _pointer_token(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
+def _point(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        return (
+            float(value.get("x_nm", value.get("x"))),
+            float(value.get("y_nm", value.get("y"))),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _arc_points(value: dict[str, Any], steps: int = 32) -> list[tuple[float, float]]:
+    start = _point(value.get("start"))
+    mid = _point(value.get("mid"))
+    end = _point(value.get("end"))
+    if start is None or mid is None or end is None:
+        return []
+    x1, y1 = start
+    x2, y2 = mid
+    x3, y3 = end
+    divisor = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+    if abs(divisor) < 1e-9:
+        return [start, end]
+    ux = (
+        (x1 * x1 + y1 * y1) * (y2 - y3)
+        + (x2 * x2 + y2 * y2) * (y3 - y1)
+        + (x3 * x3 + y3 * y3) * (y1 - y2)
+    ) / divisor
+    uy = (
+        (x1 * x1 + y1 * y1) * (x3 - x2)
+        + (x2 * x2 + y2 * y2) * (x1 - x3)
+        + (x3 * x3 + y3 * y3) * (x2 - x1)
+    ) / divisor
+    angles = [math.atan2(y - uy, x - ux) for x, y in (start, mid, end)]
+    start_angle, mid_angle, end_angle = angles
+    tau = 2 * math.pi
+    ccw_span = (end_angle - start_angle) % tau
+    mid_span = (mid_angle - start_angle) % tau
+    span = ccw_span if mid_span <= ccw_span else ccw_span - tau
+    radius = math.hypot(x1 - ux, y1 - uy)
+    return [
+        (
+            ux + radius * math.cos(start_angle + span * index / steps),
+            uy + radius * math.sin(start_angle + span * index / steps),
+        )
+        for index in range(steps + 1)
+    ]
+
+
+def _pairs(points: list[tuple[float, float]], closed: bool = False):
+    if closed and len(points) > 2:
+        points = [*points, points[0]]
+    return list(zip(points, points[1:]))
+
+
+def edge_segments(snapshot: BoardSnapshot) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for item in snapshot.items.values():
+        if item.kind != "shape" or item.data.get("layer") != "BL_Edge_Cuts":
+            continue
+        shape = item.data.get("shape", {})
+        if "segment" in shape:
+            start = _point(shape["segment"].get("start"))
+            end = _point(shape["segment"].get("end"))
+            if start is not None and end is not None:
+                segments.append((start, end))
+        elif "rectangle" in shape:
+            top_left = _point(shape["rectangle"].get("top_left"))
+            bottom_right = _point(shape["rectangle"].get("bottom_right"))
+            if top_left is not None and bottom_right is not None:
+                x1, y1 = top_left
+                x2, y2 = bottom_right
+                segments.extend(_pairs([(x1, y1), (x2, y1), (x2, y2), (x1, y2)], True))
+        elif "arc" in shape:
+            segments.extend(_pairs(_arc_points(shape["arc"])))
+        elif "circle" in shape:
+            center = _point(shape["circle"].get("center"))
+            radius_point = _point(shape["circle"].get("radius_point"))
+            if center is not None and radius_point is not None:
+                radius = math.dist(center, radius_point)
+                points = [
+                    (
+                        center[0] + radius * math.cos(2 * math.pi * index / 64),
+                        center[1] + radius * math.sin(2 * math.pi * index / 64),
+                    )
+                    for index in range(64)
+                ]
+                segments.extend(_pairs(points, True))
+        elif "polygon" in shape:
+            for polygon in shape["polygon"].get("polygons", []):
+                nodes = polygon.get("outline", {}).get("nodes", [])
+                points = [_point(node.get("point")) for node in nodes]
+                segments.extend(_pairs([point for point in points if point is not None], True))
+    return segments
+
+
+def _point_on_segment(
+    point: tuple[float, float],
+    segment: tuple[tuple[float, float], tuple[float, float]],
+) -> bool:
+    (x, y), ((x1, y1), (x2, y2)) = point, segment
+    cross = (x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)
+    length = math.hypot(x2 - x1, y2 - y1)
+    tolerance = 1.0
+    return (
+        abs(cross) <= tolerance * max(1.0, length)
+        and min(x1, x2) - tolerance <= x <= max(x1, x2) + tolerance
+        and min(y1, y2) - tolerance <= y <= max(y1, y2) + tolerance
+    )
+
+
+def _footprint_is_on_board(item: ItemState, edge_segments) -> bool:
+    if item.kind != "footprint" or not edge_segments:
+        return True
+    position = _point(item.data.get("position"))
+    if position is None:
+        return True
+    if any(_point_on_segment(position, segment) for segment in edge_segments):
+        return True
+    x, y = position
+    crossings = 0
+    for (x1, y1), (x2, y2) in edge_segments:
+        if (y1 > y) != (y2 > y):
+            intersection_x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            if intersection_x > x:
+                crossings += 1
+    return crossings % 2 == 1
+
+
+def _footprint_transform(item: ItemState) -> dict[str, Any]:
+    return {
+        "position": item.data.get("position"),
+        "orientation": item.data.get("orientation"),
+    }
+
+
+def _semantic_operation(kind: str, op: str, before: Any, after: Any) -> str:
+    semantic_kind = "routing" if kind == "track" else kind
+    if op == "add":
+        return f"{semantic_kind}.add"
+    if op == "remove":
+        return f"{semantic_kind}.remove"
+
+    before_map = before if isinstance(before, dict) else {}
+    after_map = after if isinstance(after, dict) else {}
+    if kind == "footprint":
+        moved = before_map.get("position") != after_map.get("position")
+        rotated = before_map.get("orientation") != after_map.get("orientation")
+        if moved and rotated:
+            return "footprint.move_rotate"
+        if moved:
+            return "footprint.move"
+        if rotated:
+            return "footprint.rotate"
+        return "footprint.modify"
+    if kind == "track":
+        return "routing.modify"
+    if kind == "zone":
+        before_keys = set(before_map)
+        after_keys = set(after_map)
+        changed = {
+            key for key in before_keys | after_keys if before_map.get(key) != after_map.get(key)
+        }
+        if changed and all("fill" in key.lower() for key in changed):
+            return "zone.refill"
+        return "zone.modify"
+    return f"{semantic_kind}.modify"
+
+
+def _field_changes(
+    before: Any,
+    after: Any,
+    path: str,
+    item_uuid: str,
+    kind: str,
+    semantic_operation: str,
+) -> list[dict[str, Any]]:
+    if before == after:
+        return []
+
+    if isinstance(before, dict) and isinstance(after, dict):
+        changes: list[dict[str, Any]] = []
+        for key in sorted(set(before) | set(after)):
+            child_path = f"{path}/{_pointer_token(str(key))}"
+            if key not in before:
+                changes.append(
+                    _change("add", child_path, item_uuid, kind, semantic_operation, after=after[key])
+                )
+            elif key not in after:
+                changes.append(
+                    _change("remove", child_path, item_uuid, kind, semantic_operation, before=before[key])
+                )
+            else:
+                changes.extend(
+                    _field_changes(
+                        before[key], after[key], child_path, item_uuid, kind, semantic_operation
+                    )
+                )
+        return changes
+
+    if isinstance(before, list) and isinstance(after, list):
+        changes = []
+        shared_length = min(len(before), len(after))
+        for index in range(shared_length):
+            changes.extend(
+                _field_changes(
+                    before[index],
+                    after[index],
+                    f"{path}/{index}",
+                    item_uuid,
+                    kind,
+                    semantic_operation,
+                )
+            )
+        for index in range(len(before) - 1, shared_length - 1, -1):
+            changes.append(
+                _change(
+                    "remove", f"{path}/{index}", item_uuid, kind, semantic_operation,
+                    before=before[index],
+                )
+            )
+        for index in range(shared_length, len(after)):
+            changes.append(
+                _change(
+                    "add", f"{path}/{index}", item_uuid, kind, semantic_operation,
+                    after=after[index],
+                )
+            )
+        return changes
+
+    return [_change("replace", path, item_uuid, kind, semantic_operation, before, after)]
+
+
+def _footprint_transform_change(
+    before: ItemState,
+    after: ItemState,
+    pointer: str,
+    operation: str,
+) -> dict[str, Any]:
+    """Fuse position and angle into one transform change."""
+    before_transform = {
+        "position": before.data.get("position"),
+        "orientation": before.data.get("orientation"),
+    }
+    after_transform = {
+        "position": after.data.get("position"),
+        "orientation": after.data.get("orientation"),
+    }
+    return _change(
+        "replace",
+        f"{pointer}/data/transform",
+        after.item_uuid,
+        after.kind,
+        operation,
+        before_transform,
+        after_transform,
+    )
+
+
+def _change(
+    op: str,
+    path: str,
+    item_uuid: str,
+    kind: str,
+    semantic_operation: str,
+    before: Any = None,
+    after: Any = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "change_uuid": str(uuid4()),
+        "item_uuid": item_uuid,
+        "item_kind": kind,
+        "operation": semantic_operation,
+        "op": op,
+        "path": path,
+    }
+    if op in ("remove", "replace"):
+        result["before"] = before
+    if op in ("add", "replace"):
+        result["after"] = after
+    return result
+
+
+def build_event(
+    before: BoardSnapshot,
+    after: BoardSnapshot,
+    sequence: int,
+    session_uuid: str,
+) -> dict[str, Any] | None:
+    changes: list[dict[str, Any]] = []
+    before_edges = edge_segments(before)
+    after_edges = edge_segments(after)
+
+    for item_uuid in sorted(set(before.items) | set(after.items)):
+        pointer = f"/items/{_pointer_token(item_uuid)}"
+        old: ItemState | None = before.items.get(item_uuid)
+        new: ItemState | None = after.items.get(item_uuid)
+        if old is not None and not _footprint_is_on_board(old, before_edges):
+            old = None
+        if new is not None and not _footprint_is_on_board(new, after_edges):
+            new = None
+        if old is None and new is not None:
+            operation = (
+                "footprint.move"
+                if new.kind == "footprint"
+                else _semantic_operation(new.kind, "add", None, new.data)
+            )
+            changes.append(
+                _change(
+                    "add",
+                    pointer,
+                    item_uuid,
+                    new.kind,
+                    operation,
+                    after=_footprint_transform(new) if new.kind == "footprint" else new.log_value(),
+                )
+            )
+        elif old is not None and new is None:
+            if old.kind == "footprint":
+                continue
+            operation = _semantic_operation(old.kind, "remove", old.data, None)
+            changes.append(
+                _change(
+                    "remove",
+                    pointer,
+                    item_uuid,
+                    old.kind,
+                    operation,
+                    before=_footprint_transform(old) if old.kind == "footprint" else old.log_value(),
+                )
+            )
+        elif old is not None and new is not None and old.log_value() != new.log_value():
+            kind = new.kind
+            if kind == "footprint":
+                before_transform = _footprint_transform(old)
+                after_transform = _footprint_transform(new)
+                if before_transform != after_transform:
+                    changes.append(
+                        _footprint_transform_change(old, new, pointer, "footprint.move")
+                    )
+                else:
+                    before_fields = {
+                        name: old.data[name]
+                        for name in FOOTPRINT_SILK_FIELD_NAMES
+                        if name in old.data
+                    }
+                    after_fields = {
+                        name: new.data[name]
+                        for name in FOOTPRINT_SILK_FIELD_NAMES
+                        if name in new.data
+                    }
+                    changes.extend(
+                        _field_changes(
+                            before_fields,
+                            after_fields,
+                            f"{pointer}/data",
+                            item_uuid,
+                            kind,
+                            "footprint.field.modify",
+                        )
+                    )
+            else:
+                operation = _semantic_operation(kind, "replace", old.data, new.data)
+                changes.extend(
+                    _field_changes(
+                        old.log_value(), new.log_value(), pointer, item_uuid, kind, operation
+                    )
+                )
+
+    if not changes:
+        return None
+
+    counts = Counter(change["operation"] for change in changes)
+    return {
+        "$schema": "https://kilog.local/schemas/operation-log-v1.json",
+        "schema_version": 1,
+        "event_uuid": str(uuid4()),
+        "session_uuid": session_uuid,
+        "sequence": sequence,
+        "timestamp": utc_now(),
+        "source": {
+            "application": "KiCad PCB Editor",
+            "board": after.board_name,
+            "state": "live_unsaved_memory",
+        },
+        "base_fingerprint": before.fingerprint,
+        "result_fingerprint": after.fingerprint,
+        "summary": {
+            "change_count": len(changes),
+            "item_count": len({change["item_uuid"] for change in changes}),
+            "operations": dict(sorted(counts.items())),
+        },
+        "changes": changes,
+    }
+
+
+
 import copy
 import math
 import os
@@ -32,16 +668,6 @@ from kipy.proto.common.commands.editor_commands_pb2 import RAS_OK
 from kipy.proto.common import types as common_types
 from kipy.proto.common.types import KiCadObjectType
 
-from .board_outline import (
-    circle_inside_board,
-    ordered_board_loops,
-    point_inside_board,
-    point_segment_distance,
-)
-from .diffing import edge_segments
-from .model import BoardSnapshot, ItemState, snapshots_match_restored_state
-from .recorder import RecorderError
-from .replay import ReplayError
 
 
 SNAPSHOT_TYPES = (
@@ -1482,3 +2108,116 @@ class KiCadBoardAdapter:
             # have been committed to its live board model.
             self.board.refill_zones()
         return self._snapshot_with_retry()
+
+
+def _active_adapter() -> KiCadBoardAdapter:
+    """Connect to the board currently open in KiCad PCB Editor."""
+    kicad = KiCad(client_name="com.kilog.skill-func", timeout_ms=2500)
+    return KiCadBoardAdapter(kicad, kicad.get_board())
+
+
+def fill_board_copper(
+    net_name: str = "GND",
+    front_copper: bool = True,
+    back_copper: bool = True,
+) -> int:
+    """Run Skill > Fill using the same inputs shown in the plugin UI.
+
+    Args:
+        net_name: Existing KiCad net name (the UI's ``Net`` field).
+        front_copper: Whether ``F.Cu`` is selected.
+        back_copper: Whether ``B.Cu`` is selected.
+
+    Returns:
+        Number of zones created.
+    """
+    layers = tuple(
+        layer
+        for layer, selected in (("F.Cu", front_copper), ("B.Cu", back_copper))
+        if selected
+    )
+    return _active_adapter().fill_board_copper(net_name, layers)
+
+
+def fanout_net(
+    net_name: str = "GND",
+    width_mm: float | str = 0.3,
+    via_diameter_mm: float | str = 0.4,
+    drill_diameter_mm: float | str = 0.2,
+) -> int:
+    """Run Skill > Fanout using the same inputs shown in the plugin UI.
+
+    Args:
+        net_name: Existing KiCad net name (the UI's ``Net`` field).
+        width_mm: Default trace width in millimetres (``Width``).
+        via_diameter_mm: Via diameter in millimetres (``Via Ø``).
+        drill_diameter_mm: Drill diameter in millimetres (``Drill Ø``).
+
+    Returns:
+        Number of pads fanned out.
+    """
+    return _active_adapter().fanout_net(
+        net_name,
+        width_mm,
+        via_diameter_mm,
+        drill_diameter_mm,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Headless command-line entry point for the two Skill operations."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run KiLog Skill operations against the active KiCad PCB Editor."
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    fill = commands.add_parser("fill", help="Create full-board copper zones.")
+    fill.add_argument("--net", default="GND", help="Existing net name (default: GND).")
+    fill.add_argument(
+        "--front-copper",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Select F.Cu (default: enabled).",
+    )
+    fill.add_argument(
+        "--back-copper",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Select B.Cu (default: enabled).",
+    )
+
+    fanout = commands.add_parser("fanout", help="Fan out matching SMD pads.")
+    fanout.add_argument("--net", default="GND", help="Existing net name (default: GND).")
+    fanout.add_argument("--width", default="0.3", help="Trace width in mm.")
+    fanout.add_argument("--via-diameter", default="0.4", help="Via diameter in mm.")
+    fanout.add_argument("--drill-diameter", default="0.2", help="Drill diameter in mm.")
+
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "fill":
+            count = fill_board_copper(
+                args.net,
+                args.front_copper,
+                args.back_copper,
+            )
+            print(f"Created {count} zone(s).")
+        else:
+            count = fanout_net(
+                args.net,
+                args.width,
+                args.via_diameter,
+                args.drill_diameter,
+            )
+            print(f"Fanned out {count} pad(s).")
+    except Exception as exc:
+        parser.exit(1, f"error: {exc}\n")
+    return 0
+
+
+__all__ = ("RecorderError", "fill_board_copper", "fanout_net", "main")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

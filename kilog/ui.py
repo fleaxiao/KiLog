@@ -973,13 +973,13 @@ class KiLogWindow(wx.Frame):
         fanout_width_label.SetForegroundColour(MUTED)
         fanout_width_label.SetFont(self._font(UI_FONT_SIZE))
         self.fanout_width_entry = self._text_field(
-            skill_page, "0.3", size=(40, 22), centered=True
+            skill_page, "0.2", size=(40, 22), centered=True
         )
         fanout_via_label = wx.StaticText(skill_page, label="Via Ø:")
         fanout_via_label.SetForegroundColour(MUTED)
         fanout_via_label.SetFont(self._font(UI_FONT_SIZE))
         self.fanout_via_entry = self._text_field(
-            skill_page, "0.4", size=(40, 22), centered=True
+            skill_page, "0.3", size=(40, 22), centered=True
         )
         fanout_drill_label = wx.StaticText(skill_page, label="Drill Ø:")
         fanout_drill_label.SetForegroundColour(MUTED)

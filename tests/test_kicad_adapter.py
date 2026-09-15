@@ -286,7 +286,7 @@ def test_fill_board_creates_recordable_zone_per_selected_layer():
     for zone in board.created:
         restored = Zone(zone.proto)
         connection = restored.proto.copper_settings.connection
-        assert connection.zone_connection == ZoneConnectionStyle.ZCS_THERMAL
+        assert connection.zone_connection == ZoneConnectionStyle.ZCS_FULL
         assert connection.thermal_spokes.gap.value_nm == 500_000
         assert connection.thermal_spokes.width.value_nm == 500_000
         assert connection.thermal_spokes.width.value_nm >= restored.min_thickness
@@ -427,7 +427,7 @@ def test_fill_board_adds_one_local_zone_for_same_net_pads_in_a_footprint():
     assert list(local_zone.layers) == [BoardLayer.BL_F_Cu]
     assert local_zone.priority == 1
     connection = Zone(local_zone.proto).proto.copper_settings.connection
-    assert connection.zone_connection == ZoneConnectionStyle.ZCS_THERMAL
+    assert connection.zone_connection == ZoneConnectionStyle.ZCS_FULL
     assert connection.thermal_spokes.gap.value_nm == 500_000
     assert connection.thermal_spokes.width.value_nm == 500_000
     assert [(node.point.x, node.point.y) for node in local_zone.outline.outline.nodes] == [
@@ -502,9 +502,153 @@ def test_fanout_creates_trace_and_via_for_matching_smd_pads_only():
     assert (track.end.x, track.end.y) == (12_500_000, 10_000_000)
     assert (via.position.x, via.position.y) == (12_500_000, 10_000_000)
     assert track.width == 400_000
-    assert via.diameter == 400_000
+    assert via.diameter == 300_000
     assert via.drill_diameter == 200_000
     assert board.commit_message == "KiLog: fanout GND"
+
+
+def test_fanout_finds_narrow_valid_window_between_via_and_large_pad():
+    footprint = with_id(FootprintInstance(), "fp-narrow-window")
+    footprint.position = Vector2.from_xy(9_750_000, 10_250_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    source.padstack.copper_layers[0].size = Vector2.from_xy(265_000, 265_000)
+    footprint.definition.add_item(source)
+
+    for position in (
+        (9_500_000, 10_000_000),
+        (10_000_000, 9_500_000),
+        (10_000_000, 10_500_000),
+    ):
+        blocker = Pad()
+        blocker.position = Vector2.from_xy(*position)
+        blocker.net = Net(name="VCC")
+        blocker.pad_type = PadType.PT_SMD
+        blocker.padstack.copper_layers[0].size = Vector2.from_xy(265_000, 265_000)
+        footprint.definition.add_item(blocker)
+
+    large_blocker = Pad()
+    large_blocker.position = Vector2.from_xy(12_775_000, 9_500_000)
+    large_blocker.net = Net(name="VCC")
+    large_blocker.pad_type = PadType.PT_SMD
+    large_blocker.padstack.copper_layers[0].size = Vector2.from_xy(950_000, 2_000_000)
+    footprint.definition.add_item(large_blocker)
+
+    existing_via = Via()
+    existing_via.position = Vector2.from_xy(10_775_000, 10_300_000)
+    existing_via.net = Net(name="VCC")
+    existing_via.diameter = 300_000
+
+    adapter = KiCadBoardAdapter(object(), FakeBoard([]))
+    adapter.FANOUT_MAX_LATERAL_OFFSET_NM = 0
+    pads = list(footprint.definition.pads)
+    position = adapter._find_fanout_position(
+        source,
+        footprint,
+        BoardLayer.BL_F_Cu,
+        [[(0, 0), (20_000_000, 0), (20_000_000, 20_000_000), (0, 20_000_000)]],
+        [(pad.position.x, pad.position.y, adapter._pad_radius(pad), pad) for pad in pads],
+        [(existing_via.position.x, existing_via.position.y, adapter._via_radius(existing_via))],
+        [],
+        3_000_000,
+        200_000,
+        300_000,
+    )
+
+    assert (position.x, position.y) == (11_200_000, 10_000_000)
+
+
+def test_fanout_accepts_clearance_equal_within_one_nanometre():
+    obstacle = Track()
+    obstacle.start = Vector2.from_xy(0, 0)
+    obstacle.end = Vector2.from_xy(2_000_000, 0)
+    obstacle.width = 200_000
+    obstacle.layer = BoardLayer.BL_F_Cu
+    obstacle.net = Net(name="VCC")
+
+    assert not KiCadBoardAdapter._fanout_hits_other_net_track(
+        (500_000, 450_000),
+        (1_000_000, 449_999.5),
+        BoardLayer.BL_F_Cu,
+        "GND",
+        200_000,
+        150_000,
+        [obstacle],
+    )
+
+
+def test_fanout_uses_small_lateral_offset_to_clear_nearby_track():
+    footprint = with_id(FootprintInstance(), "fp-lateral-offset")
+    footprint.position = Vector2.from_xy(9_750_000, 10_250_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+
+    source = Pad()
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    source.padstack.copper_layers[0].size = Vector2.from_xy(265_000, 265_000)
+    footprint.definition.add_item(source)
+
+    nearby_track = Track()
+    nearby_track.start = Vector2.from_xy(9_500_000, 9_550_002)
+    nearby_track.end = Vector2.from_xy(10_500_000, 9_550_002)
+    nearby_track.width = 200_000
+    nearby_track.layer = BoardLayer.BL_F_Cu
+    nearby_track.net = Net(name="VCC")
+
+    adapter = KiCadBoardAdapter(object(), FakeBoard([]))
+    position = adapter._find_fanout_position(
+        source,
+        footprint,
+        BoardLayer.BL_F_Cu,
+        [[(0, 0), (20_000_000, 0), (20_000_000, 20_000_000), (0, 20_000_000)]],
+        [(source.position.x, source.position.y, adapter._pad_radius(source), source)],
+        [],
+        [nearby_track],
+        500_000,
+        200_000,
+        300_000,
+    )
+
+    assert (position.x, position.y) == (10_500_000, 10_050_000)
+
+
+def test_fanout_ignores_anonymous_aperture_overlapping_source_pad():
+    footprint = with_id(FootprintInstance(), "fp-bga-paste-aperture")
+    footprint.position = Vector2.from_xy(10_250_000, 10_250_000)
+    footprint.layer = BoardLayer.BL_F_Cu
+
+    source = Pad()
+    source.number = "C2"
+    source.position = Vector2.from_xy(10_000_000, 10_000_000)
+    source.net = Net(name="GND")
+    source.pad_type = PadType.PT_SMD
+    source.padstack.copper_layers[0].size = Vector2.from_xy(265_000, 265_000)
+    footprint.definition.add_item(source)
+
+    aperture = Pad()
+    aperture.position = source.position
+    aperture.net = Net(name="")
+    aperture.pad_type = PadType.PT_SMD
+    aperture.padstack.copper_layers[0].size = Vector2.from_xy(300_000, 300_000)
+    footprint.definition.add_item(aperture)
+
+    board = FillBoard(
+        [
+            footprint,
+            edge_segment("edge-1", (0, 0), (20_000_000, 0)),
+            edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
+            edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
+            edge_segment("edge-4", (0, 20_000_000), (0, 0)),
+        ]
+    )
+
+    assert KiCadBoardAdapter(object(), board).fanout_net("GND") == 1
+    assert len(board.created) == 2
 
 
 def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
@@ -534,7 +678,7 @@ def test_fanout_uses_pad_size_and_board_bounds_to_place_via_safely():
     assert max(
         abs(via.position.x - pad.position.x),
         abs(via.position.y - pad.position.y),
-    ) >= 2_000_000 + 200_000 + 200_000
+    ) >= 2_000_000 + 150_000 + 200_000
     assert via.position.x == pad.position.x or via.position.y == pad.position.y
     assert 500_000 <= via.position.x <= 19_500_000
     assert 500_000 <= via.position.y <= 19_500_000
@@ -564,7 +708,7 @@ def test_fanout_via_clears_board_edge_by_at_least_point_five_mm():
     assert count == 1
     via = board.created[1]
     # The preferred outward candidate has its center inside the board at x=0.4 mm,
-    # but its 0.4 mm via would leave only 0.2 mm to Edge.Cuts and must be rejected.
+    # but its 0.3 mm via would leave only 0.25 mm to Edge.Cuts and must be rejected.
     assert (via.position.x, via.position.y) != (400_000, 10_000_000)
     assert min(
         via.position.x,
@@ -689,7 +833,7 @@ def test_fanout_trace_uses_rectangular_pad_clearance_instead_of_diagonal_radius(
 
     track = board.created[0]
     assert track.start.x == track.end.x == source.position.x
-    assert abs(track.end.y - track.start.y) == 2_250_000
+    assert abs(track.end.y - track.start.y) == 2_200_000
 
 
 def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():
@@ -813,7 +957,7 @@ def test_fanout_chooses_short_axis_of_rectangular_pad():
 
     track = board.created[0]
     assert track.end.x == track.start.x
-    assert abs(track.end.y - track.start.y) == 900_000
+    assert abs(track.end.y - track.start.y) == 850_000
 
 
 def test_fanout_inherits_width_from_trace_connected_to_pad():

@@ -2,10 +2,17 @@
 
 ## Unreleased
 
-- Show a configurable fanout drill diameter in the UI, defaulting to 0.2 mm.
+- Set the default fanout width, via diameter, and drill diameter to 0.2 mm,
+  0.3 mm, and 0.2 mm respectively.
+- Reduce the fanout candidate search step to 0.1 mm so narrow valid placement
+  windows are not skipped.
+- Allow a 1 nm numerical tolerance in fanout clearance comparisons so an exact
+  design-rule clearance is not rejected by floating-point rounding.
+- Try small lateral offsets around each fanout direction so dense BGA pads can
+  escape without landing exactly on a neighbouring trace's clearance boundary.
+- Ignore anonymous paste-aperture pads that KiCad IPC reports on top of numbered
+  BGA copper pads when checking fanout collisions.
 - Reduce the minimum fanout length from 1.0 mm to 0.5 mm.
-- Default the fanout track width to 0.3 mm.
-- Show a configurable fanout via diameter in the UI, defaulting to 0.4 mm.
 - Avoid false restore failures when KiCad repacks an otherwise equivalent footprint definition.
 - Record every track and via created by one fanout command as a single step.
 - Continue a replay as a recording from its current step, truncating later steps.

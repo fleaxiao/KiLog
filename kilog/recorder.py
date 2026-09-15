@@ -46,8 +46,8 @@ class BoardAdapter(Protocol):
     def fanout_net(
         self,
         net_name: str,
-        default_width_mm: float | str = 0.3,
-        via_diameter_mm: float | str = 0.4,
+        default_width_mm: float | str = 0.2,
+        via_diameter_mm: float | str = 0.3,
         via_drill_mm: float | str = 0.2,
     ) -> int: ...
 

@@ -714,14 +714,17 @@ class KiCadBoardAdapter:
 
     REVERT_SETTLE_SECONDS = 0.65
     FANOUT_LENGTH_NM = 500_000
-    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.3
-    FANOUT_DEFAULT_VIA_DIAMETER_MM = 0.4
+    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.2
+    FANOUT_DEFAULT_VIA_DIAMETER_MM = 0.3
     FANOUT_DEFAULT_VIA_DRILL_MM = 0.2
-    FANOUT_VIA_DIAMETER_NM = 400_000
+    FANOUT_VIA_DIAMETER_NM = 300_000
     FANOUT_VIA_DRILL_NM = 200_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
+    FANOUT_CLEARANCE_TOLERANCE_NM = 1
     FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
-    FANOUT_SEARCH_STEP_NM = 500_000
+    FANOUT_SEARCH_STEP_NM = 100_000
+    FANOUT_LATERAL_SEARCH_STEP_NM = 50_000
+    FANOUT_MAX_LATERAL_OFFSET_NM = 200_000
     LOCAL_PAD_ZONE_MARGIN_NM = 250_000
 
     def __init__(self, kicad: KiCad, board: Board):
@@ -1182,11 +1185,11 @@ class KiCadBoardAdapter:
 
     @staticmethod
     def _new_copper_zone() -> Zone:
-        """Create a copper zone with explicit, serializable thermal settings."""
+        """Create a copper zone with solid pad connections."""
         zone = Zone()
         zone.min_thickness = 250_000
         connection = zone.proto.copper_settings.connection
-        connection.zone_connection = ZoneConnectionStyle.ZCS_THERMAL
+        connection.zone_connection = ZoneConnectionStyle.ZCS_FULL
         # kipy 0.7.1's thermal_spokes getter wraps a copy, not a proto reference.
         # Set the owned message so these values survive IPC and save/reload.
         connection.thermal_spokes.gap.value_nm = 500_000
@@ -1309,11 +1312,7 @@ class KiCadBoardAdapter:
             if isinstance(item, FootprintInstance)
             and point_inside_board((item.position.x, item.position.y), loops)
         ]
-        pad_obstacles = [
-            (pad.position.x, pad.position.y, self._pad_radius(pad), pad)
-            for footprint in footprints
-            for pad in footprint.definition.pads
-        ]
+        pad_obstacles = self._fanout_pad_obstacles(footprints)
         via_obstacles = [
             (item.position.x, item.position.y, self._via_radius(item))
             for item in items
@@ -1439,6 +1438,38 @@ class KiCadBoardAdapter:
         drill = pad.padstack.drill.diameter
         return max(radius, math.hypot(drill.x, drill.y) / 2)
 
+    @classmethod
+    def _fanout_pad_obstacles(cls, footprints):
+        """Return copper obstacles, excluding duplicate paste-aperture pads.
+
+        Some fine-pitch BGA footprints model paste apertures as anonymous SMD
+        pads placed directly over their numbered copper pads.  KiCad IPC can
+        expose those aperture-only items with a default copper layer, so using
+        them as obstacles makes every escape trace collide at its own start.
+        """
+        obstacles = []
+        for footprint in footprints:
+            pads = list(footprint.definition.pads)
+            for pad in pads:
+                duplicate_aperture = (
+                    pad.pad_type == PadType.PT_SMD
+                    and not str(pad.number).strip()
+                    and not pad.net.name.strip()
+                    and any(
+                        other is not pad
+                        and str(other.number).strip()
+                        and other.position.x == pad.position.x
+                        and other.position.y == pad.position.y
+                        for other in pads
+                    )
+                )
+                if duplicate_aperture:
+                    continue
+                obstacles.append(
+                    (pad.position.x, pad.position.y, cls._pad_radius(pad), pad)
+                )
+        return obstacles
+
     @staticmethod
     def _pad_extent_in_direction(pad, direction_x: int, direction_y: int) -> float:
         """Return pad copper extent from its anchor along one cardinal direction."""
@@ -1554,6 +1585,14 @@ class KiCadBoardAdapter:
             reverse=True,
         )
 
+        lateral_offsets = [0]
+        for offset in range(
+            self.FANOUT_LATERAL_SEARCH_STEP_NM,
+            self.FANOUT_MAX_LATERAL_OFFSET_NM + 1,
+            self.FANOUT_LATERAL_SEARCH_STEP_NM,
+        ):
+            lateral_offsets.extend((offset, -offset))
+
         candidates = []
         for preference, (direction_x, direction_y) in enumerate(directions):
             distance = max(
@@ -1563,13 +1602,40 @@ class KiCadBoardAdapter:
                 + self.FANOUT_PAD_CLEARANCE_NM,
             )
             while distance <= max_search:
-                candidates.append((distance, preference, direction_x, direction_y))
+                for lateral_offset in lateral_offsets:
+                    candidates.append(
+                        (
+                            distance,
+                            preference,
+                            abs(lateral_offset),
+                            lateral_offset,
+                            direction_x,
+                            direction_y,
+                        )
+                    )
                 distance += self.FANOUT_SEARCH_STEP_NM
 
-        for distance, _preference, direction_x, direction_y in sorted(candidates):
+        for (
+            distance,
+            _preference,
+            _absolute_lateral_offset,
+            lateral_offset,
+            direction_x,
+            direction_y,
+        ) in sorted(candidates):
+            perpendicular_x = -direction_y
+            perpendicular_y = direction_x
             candidate = (
-                round(pad.position.x + distance * direction_x),
-                round(pad.position.y + distance * direction_y),
+                round(
+                    pad.position.x
+                    + distance * direction_x
+                    + lateral_offset * perpendicular_x
+                ),
+                round(
+                    pad.position.y
+                    + distance * direction_y
+                    + lateral_offset * perpendicular_y
+                ),
             )
             if not circle_inside_board(
                 candidate,
@@ -1782,13 +1848,21 @@ class KiCadBoardAdapter:
                 obstacle_radius = obstacle.width / 2
                 # The through via intersects every copper layer.
                 if point_segment_distance(candidate, obstacle_start, obstacle_end) < (
-                    via_radius + obstacle_radius + clearance
+                    via_radius
+                    + obstacle_radius
+                    + clearance
+                    - cls.FANOUT_CLEARANCE_TOLERANCE_NM
                 ):
                     return True
                 # The fanout trace only conflicts with copper on its own layer.
                 if obstacle.layer == layer and cls._segment_distance(
                     start, candidate, obstacle_start, obstacle_end
-                ) < (track_width_nm / 2 + obstacle_radius + clearance):
+                ) < (
+                    track_width_nm / 2
+                    + obstacle_radius
+                    + clearance
+                    - cls.FANOUT_CLEARANCE_TOLERANCE_NM
+                ):
                     return True
         return False
 
@@ -2141,8 +2215,8 @@ def fill_board_copper(
 
 def fanout_net(
     net_name: str = "GND",
-    width_mm: float | str = 0.3,
-    via_diameter_mm: float | str = 0.4,
+    width_mm: float | str = 0.2,
+    via_diameter_mm: float | str = 0.3,
     drill_diameter_mm: float | str = 0.2,
 ) -> int:
     """Run Skill > Fanout using the same inputs shown in the plugin UI.
@@ -2190,8 +2264,8 @@ def main(argv: list[str] | None = None) -> int:
 
     fanout = commands.add_parser("fanout", help="Fan out matching SMD pads.")
     fanout.add_argument("--net", default="GND", help="Existing net name (default: GND).")
-    fanout.add_argument("--width", default="0.3", help="Trace width in mm.")
-    fanout.add_argument("--via-diameter", default="0.4", help="Via diameter in mm.")
+    fanout.add_argument("--width", default="0.2", help="Trace width in mm.")
+    fanout.add_argument("--via-diameter", default="0.3", help="Via diameter in mm.")
     fanout.add_argument("--drill-diameter", default="0.2", help="Drill diameter in mm.")
 
     args = parser.parse_args(argv)

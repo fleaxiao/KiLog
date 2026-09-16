@@ -502,8 +502,8 @@ def test_fanout_creates_trace_and_via_for_matching_smd_pads_only():
     assert (track.end.x, track.end.y) == (12_500_000, 10_000_000)
     assert (via.position.x, via.position.y) == (12_500_000, 10_000_000)
     assert track.width == 400_000
-    assert via.diameter == 300_000
-    assert via.drill_diameter == 200_000
+    assert via.diameter == 500_000
+    assert via.drill_diameter == 300_000
     assert board.commit_message == "KiLog: fanout GND"
 
 
@@ -544,7 +544,6 @@ def test_fanout_finds_narrow_valid_window_between_via_and_large_pad():
     existing_via.diameter = 300_000
 
     adapter = KiCadBoardAdapter(object(), FakeBoard([]))
-    adapter.FANOUT_MAX_LATERAL_OFFSET_NM = 0
     pads = list(footprint.definition.pads)
     position = adapter._find_fanout_position(
         source,
@@ -581,7 +580,8 @@ def test_fanout_accepts_clearance_equal_within_one_nanometre():
     )
 
 
-def test_fanout_uses_small_lateral_offset_to_clear_nearby_track():
+@pytest.mark.parametrize("block_other_directions", [False, True])
+def test_fanout_stays_orthogonal_when_preferred_direction_is_blocked(block_other_directions):
     footprint = with_id(FootprintInstance(), "fp-lateral-offset")
     footprint.position = Vector2.from_xy(9_750_000, 10_250_000)
     footprint.layer = BoardLayer.BL_F_Cu
@@ -607,14 +607,18 @@ def test_fanout_uses_small_lateral_offset_to_clear_nearby_track():
         BoardLayer.BL_F_Cu,
         [[(0, 0), (20_000_000, 0), (20_000_000, 20_000_000), (0, 20_000_000)]],
         [(source.position.x, source.position.y, adapter._pad_radius(source), source)],
-        [],
+        [(10_000_000, 10_500_000, 150_000), (9_500_000, 10_000_000, 150_000)]
+        if block_other_directions else [],
         [nearby_track],
         500_000,
         200_000,
         300_000,
     )
 
-    assert (position.x, position.y) == (10_500_000, 10_050_000)
+    if block_other_directions:
+        assert position is None
+    else:
+        assert (position.x, position.y) == (10_000_000, 10_500_000)
 
 
 def test_fanout_ignores_anonymous_aperture_overlapping_source_pad():
@@ -833,7 +837,7 @@ def test_fanout_trace_uses_rectangular_pad_clearance_instead_of_diagonal_radius(
 
     track = board.created[0]
     assert track.start.x == track.end.x == source.position.x
-    assert abs(track.end.y - track.start.y) == 2_200_000
+    assert abs(track.end.y - track.start.y) == 2_300_000
 
 
 def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():
@@ -957,10 +961,11 @@ def test_fanout_chooses_short_axis_of_rectangular_pad():
 
     track = board.created[0]
     assert track.end.x == track.start.x
-    assert abs(track.end.y - track.start.y) == 850_000
+    assert abs(track.end.y - track.start.y) == 950_000
 
 
-def test_fanout_inherits_width_from_trace_connected_to_pad():
+@pytest.mark.parametrize("connected_width", [200_000, 800_000])
+def test_fanout_scales_all_sizes_from_widest_trace_on_component(connected_width):
     footprint = with_id(FootprintInstance(), "fp-width")
     footprint.position = Vector2.from_xy(8_000_000, 10_000_000)
     footprint.layer = BoardLayer.BL_F_Cu
@@ -975,11 +980,24 @@ def test_fanout_inherits_width_from_trace_connected_to_pad():
     connected_track.layer = BoardLayer.BL_F_Cu
     connected_track.start = pad.position
     connected_track.end = Vector2.from_xy(10_000_000, 8_000_000)
-    connected_track.width = 650_000
+    connected_track.width = 100_000
+    other_pad = Pad()
+    other_pad.position = Vector2.from_xy(6_000_000, 10_000_000)
+    other_pad.net = Net(name="VCC")
+    other_pad.pad_type = PadType.PT_SMD
+    other_pad.padstack.copper_layers[0].size = Vector2.from_xy(1_000_000, 1_000_000)
+    footprint.definition.add_item(other_pad)
+    widest = with_id(Track(), "widest-track")
+    widest.net = Net(name="VCC")
+    widest.layer = BoardLayer.BL_F_Cu
+    widest.start = Vector2.from_xy(6_100_000, 10_000_000)
+    widest.end = Vector2.from_xy(6_000_000, 8_000_000)
+    widest.width = connected_width
     board = FillBoard(
         [
             footprint,
             connected_track,
+            widest,
             edge_segment("edge-1", (0, 0), (20_000_000, 0)),
             edge_segment("edge-2", (20_000_000, 0), (20_000_000, 20_000_000)),
             edge_segment("edge-3", (20_000_000, 20_000_000), (0, 20_000_000)),
@@ -987,9 +1005,11 @@ def test_fanout_inherits_width_from_trace_connected_to_pad():
         ]
     )
 
-    KiCadBoardAdapter(object(), board).fanout_net("GND", 0.25)
+    KiCadBoardAdapter(object(), board).fanout_net("GND")
 
-    assert board.created[0].width == 650_000
+    assert board.created[0].width == connected_width
+    assert board.created[1].diameter == round(connected_width * 0.5 / 0.4)
+    assert board.created[1].drill_diameter == round(connected_width * 0.3 / 0.4)
 
 
 def test_fanout_rejects_invalid_default_width():
@@ -1228,3 +1248,20 @@ def test_portable_skill_uses_same_serialized_copper_settings():
     expected = KiCadBoardAdapter._new_copper_zone()
     actual = skill.KiCadBoardAdapter._new_copper_zone()
     assert actual.proto.copper_settings == expected.proto.copper_settings
+
+
+def test_fanout_width_prefers_widest_over_closest_endpoint():
+    pad = Pad()
+    pad.position = Vector2.from_xy(0, 0)
+    pad.net = Net(name="GND")
+    pad.padstack.copper_layers[0].size = Vector2.from_xy(1_000_000, 1_000_000)
+    tracks = []
+    for x, width, net in [(0, 200_000, "GND"), (100_000, 800_000, "GND"),
+                          (0, 2_000_000, "VCC"), (5_000_000, 3_000_000, "GND")]:
+        track = Track()
+        track.start = Vector2.from_xy(x, 0)
+        track.end = Vector2.from_xy(8_000_000, 0)
+        track.width = width
+        track.net = Net(name=net)
+        tracks.append(track)
+    assert KiCadBoardAdapter._fanout_track_width(pad, tracks, 400_000) == 800_000

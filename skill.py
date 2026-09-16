@@ -714,17 +714,15 @@ class KiCadBoardAdapter:
 
     REVERT_SETTLE_SECONDS = 0.65
     FANOUT_LENGTH_NM = 500_000
-    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.2
-    FANOUT_DEFAULT_VIA_DIAMETER_MM = 0.3
-    FANOUT_DEFAULT_VIA_DRILL_MM = 0.2
-    FANOUT_VIA_DIAMETER_NM = 300_000
-    FANOUT_VIA_DRILL_NM = 200_000
+    FANOUT_DEFAULT_TRACK_WIDTH_MM = 0.4
+    FANOUT_DEFAULT_VIA_DIAMETER_MM = 0.5
+    FANOUT_DEFAULT_VIA_DRILL_MM = 0.3
+    FANOUT_VIA_DIAMETER_NM = 500_000
+    FANOUT_VIA_DRILL_NM = 300_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
     FANOUT_CLEARANCE_TOLERANCE_NM = 1
     FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
     FANOUT_SEARCH_STEP_NM = 100_000
-    FANOUT_LATERAL_SEARCH_STEP_NM = 50_000
-    FANOUT_MAX_LATERAL_OFFSET_NM = 200_000
     LOCAL_PAD_ZONE_MARGIN_NM = 250_000
 
     def __init__(self, kicad: KiCad, board: Board):
@@ -1334,6 +1332,15 @@ class KiCadBoardAdapter:
                 if footprint.layer == BoardLayer.BL_B_Cu
                 else BoardLayer.BL_F_Cu
             )
+            connected_width = max(
+                (self._fanout_track_width(pad, existing_tracks, 0)
+                 for pad in footprint.definition.pads),
+                default=0,
+            )
+            track_width = connected_width or default_width_nm
+            scale = track_width / default_width_nm
+            footprint_drill = max(1, round(via_drill_nm * scale))
+            footprint_via = max(footprint_drill + 1, round(via_diameter_nm * scale))
             for pad in footprint.definition.pads:
                 if pad.pad_type != PadType.PT_SMD or pad.net.name.casefold() != net.name.casefold():
                     continue
@@ -1342,11 +1349,6 @@ class KiCadBoardAdapter:
                     already_fanned_count += 1
                     continue
 
-                track_width = self._fanout_track_width(
-                    pad,
-                    existing_tracks,
-                    default_width_nm,
-                )
                 via_position = self._find_fanout_position(
                     pad,
                     footprint,
@@ -1357,7 +1359,7 @@ class KiCadBoardAdapter:
                     existing_tracks,
                     max_search,
                     track_width,
-                    via_diameter_nm,
+                    footprint_via,
                 )
                 if via_position is None:
                     failed_pads.append(self._fanout_pad_label(footprint, pad))
@@ -1373,12 +1375,12 @@ class KiCadBoardAdapter:
                 via = Via()
                 via.net = net
                 via.position = via_position
-                via.diameter = via_diameter_nm
-                via.drill_diameter = via_drill_nm
+                via.diameter = footprint_via
+                via.drill_diameter = footprint_drill
 
                 created.extend((track, via))
                 via_obstacles.append(
-                    (via_position.x, via_position.y, via_diameter_nm / 2)
+                    (via_position.x, via_position.y, footprint_via / 2)
                 )
                 fanout_count += 1
 
@@ -1510,19 +1512,19 @@ class KiCadBoardAdapter:
 
     @classmethod
     def _fanout_track_width(cls, pad, tracks, default_width_nm: int) -> int:
-        """Use the width of the closest same-net trace endpoint connected to a pad."""
+        """Use the widest same-net trace with an endpoint connected to a pad."""
         pad_radius = cls._pad_radius(pad)
         connected = []
         for track in tracks:
-            if track.net.name.casefold() != pad.net.name.casefold():
+            if not pad.net.name or track.net.name.casefold() != pad.net.name.casefold():
                 continue
             endpoint_distance = min(
                 math.hypot(track.start.x - pad.position.x, track.start.y - pad.position.y),
                 math.hypot(track.end.x - pad.position.x, track.end.y - pad.position.y),
             )
             if endpoint_distance <= max(1.0, pad_radius):
-                connected.append((endpoint_distance, -track.width, track.width))
-        return min(connected)[2] if connected else default_width_nm
+                connected.append(track.width)
+        return max(connected) if connected else default_width_nm
 
     @classmethod
     def _pad_is_fanned_out(cls, pad, tracks, items) -> bool:
@@ -1585,14 +1587,6 @@ class KiCadBoardAdapter:
             reverse=True,
         )
 
-        lateral_offsets = [0]
-        for offset in range(
-            self.FANOUT_LATERAL_SEARCH_STEP_NM,
-            self.FANOUT_MAX_LATERAL_OFFSET_NM + 1,
-            self.FANOUT_LATERAL_SEARCH_STEP_NM,
-        ):
-            lateral_offsets.extend((offset, -offset))
-
         candidates = []
         for preference, (direction_x, direction_y) in enumerate(directions):
             distance = max(
@@ -1602,40 +1596,14 @@ class KiCadBoardAdapter:
                 + self.FANOUT_PAD_CLEARANCE_NM,
             )
             while distance <= max_search:
-                for lateral_offset in lateral_offsets:
-                    candidates.append(
-                        (
-                            distance,
-                            preference,
-                            abs(lateral_offset),
-                            lateral_offset,
-                            direction_x,
-                            direction_y,
-                        )
-                    )
+                candidates.append((distance, preference, direction_x, direction_y))
                 distance += self.FANOUT_SEARCH_STEP_NM
 
-        for (
-            distance,
-            _preference,
-            _absolute_lateral_offset,
-            lateral_offset,
-            direction_x,
-            direction_y,
-        ) in sorted(candidates):
-            perpendicular_x = -direction_y
-            perpendicular_y = direction_x
+        # Align the via with the pad center to keep the single trace orthogonal.
+        for distance, _preference, direction_x, direction_y in sorted(candidates):
             candidate = (
-                round(
-                    pad.position.x
-                    + distance * direction_x
-                    + lateral_offset * perpendicular_x
-                ),
-                round(
-                    pad.position.y
-                    + distance * direction_y
-                    + lateral_offset * perpendicular_y
-                ),
+                round(pad.position.x + distance * direction_x),
+                round(pad.position.y + distance * direction_y),
             )
             if not circle_inside_board(
                 candidate,
@@ -2215,9 +2183,9 @@ def fill_board_copper(
 
 def fanout_net(
     net_name: str = "GND",
-    width_mm: float | str = 0.2,
-    via_diameter_mm: float | str = 0.3,
-    drill_diameter_mm: float | str = 0.2,
+    width_mm: float | str = 0.4,
+    via_diameter_mm: float | str = 0.5,
+    drill_diameter_mm: float | str = 0.3,
 ) -> int:
     """Run Skill > Fanout using the same inputs shown in the plugin UI.
 
@@ -2264,9 +2232,9 @@ def main(argv: list[str] | None = None) -> int:
 
     fanout = commands.add_parser("fanout", help="Fan out matching SMD pads.")
     fanout.add_argument("--net", default="GND", help="Existing net name (default: GND).")
-    fanout.add_argument("--width", default="0.2", help="Trace width in mm.")
-    fanout.add_argument("--via-diameter", default="0.3", help="Via diameter in mm.")
-    fanout.add_argument("--drill-diameter", default="0.2", help="Drill diameter in mm.")
+    fanout.add_argument("--width", default="0.4", help="Trace width in mm.")
+    fanout.add_argument("--via-diameter", default="0.5", help="Via diameter in mm.")
+    fanout.add_argument("--drill-diameter", default="0.3", help="Drill diameter in mm.")
 
     args = parser.parse_args(argv)
     try:

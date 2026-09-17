@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Clamp fanout trace widths, via diameters, and drill diameters to minimums of
+  0.3 mm, 0.3 mm, and 0.2 mm after scaling, including the portable skill script.
+
 - Set the default fanout width, via diameter, and drill diameter to 0.4 mm,
   0.5 mm, and 0.3 mm respectively.
 - Size fanout per component using its widest directly connected trace, scaling

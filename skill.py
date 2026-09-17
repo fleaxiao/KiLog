@@ -719,6 +719,9 @@ class KiCadBoardAdapter:
     FANOUT_DEFAULT_VIA_DRILL_MM = 0.3
     FANOUT_VIA_DIAMETER_NM = 500_000
     FANOUT_VIA_DRILL_NM = 300_000
+    FANOUT_MIN_VIA_DRILL_NM = 200_000
+    FANOUT_MIN_TRACK_WIDTH_NM = 300_000
+    FANOUT_MIN_VIA_DIAMETER_NM = 300_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
     FANOUT_CLEARANCE_TOLERANCE_NM = 1
     FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
@@ -1339,8 +1342,12 @@ class KiCadBoardAdapter:
             )
             track_width = connected_width or default_width_nm
             scale = track_width / default_width_nm
-            footprint_drill = max(1, round(via_drill_nm * scale))
-            footprint_via = max(footprint_drill + 1, round(via_diameter_nm * scale))
+            track_width = max(self.FANOUT_MIN_TRACK_WIDTH_NM, track_width)
+            footprint_drill = max(self.FANOUT_MIN_VIA_DRILL_NM, round(via_drill_nm * scale))
+            footprint_via = max(
+                self.FANOUT_MIN_VIA_DIAMETER_NM,
+                footprint_drill + 1, round(via_diameter_nm * scale),
+            )
             for pad in footprint.definition.pads:
                 if pad.pad_type != PadType.PT_SMD or pad.net.name.casefold() != net.name.casefold():
                     continue

@@ -97,7 +97,9 @@ Fanout behavior:
 - Each component uses the widest trace directly connected to any of its pads
   (matching that pad's net), even if the pad belongs to another net. Via and drill
   diameters scale by the resulting width divided by the entered width, allowing
-  smaller or larger sizes. Without connected traces, the entered values are used.
+  smaller or larger sizes. After scaling, minimums are 0.3 mm trace width,
+  0.3 mm via diameter, and 0.2 mm drill diameter. Without connected traces,
+  the entered values use the same minimums.
 - Via copper stays at least 0.5 mm from the closed `Edge.Cuts` outline and
   internal cut-outs.
 - Placement avoids other on-board pads, existing vias, and traces on other nets.

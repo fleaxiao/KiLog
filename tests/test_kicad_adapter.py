@@ -964,7 +964,7 @@ def test_fanout_chooses_short_axis_of_rectangular_pad():
     assert abs(track.end.y - track.start.y) == 950_000
 
 
-@pytest.mark.parametrize("connected_width", [200_000, 800_000])
+@pytest.mark.parametrize("connected_width", [100_000, 200_000, 300_000, 400_000, 800_000])
 def test_fanout_scales_all_sizes_from_widest_trace_on_component(connected_width):
     footprint = with_id(FootprintInstance(), "fp-width")
     footprint.position = Vector2.from_xy(8_000_000, 10_000_000)
@@ -1007,9 +1007,10 @@ def test_fanout_scales_all_sizes_from_widest_trace_on_component(connected_width)
 
     KiCadBoardAdapter(object(), board).fanout_net("GND")
 
-    assert board.created[0].width == connected_width
-    assert board.created[1].diameter == round(connected_width * 0.5 / 0.4)
-    assert board.created[1].drill_diameter == round(connected_width * 0.3 / 0.4)
+    assert board.created[0].width == max(300_000, connected_width)
+    expected_drill = max(200_000, round(connected_width * 0.3 / 0.4))
+    assert board.created[1].diameter == max(300_000, expected_drill + 1, round(connected_width * 0.5 / 0.4))
+    assert board.created[1].drill_diameter == expected_drill
 
 
 def test_fanout_rejects_invalid_default_width():

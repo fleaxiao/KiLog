@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Keep magnetic L/T fanouts outside the component. Use rectangular pad copper
+  envelopes for via clearance, ignore paste-only apertures, and allow a tighter
+  gap to the source pad on the same net when the preferred spacing cannot fit.
+  Add whole-board obstacle regression coverage for ref_065, including T1.7.
+
 - Clamp fanout trace widths, via diameters, and drill diameters to minimums of
   0.3 mm, 0.3 mm, and 0.2 mm after scaling, including the portable skill script.
 

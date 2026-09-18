@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 import pytest
 from kipy.board_types import (
@@ -22,6 +24,120 @@ from kipy.geometry import Vector2
 
 from kilog.kicad_adapter import KiCadBoardAdapter
 from kilog.recorder import RecorderError
+
+
+@pytest.mark.parametrize("reference", ["T1", "L1"])
+@pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+@pytest.mark.parametrize("blocked", [False, True])
+def test_ref_065_t1_pad7_only_fans_outward(reference, rotation, blocked):
+    """Use the actual T1 pad geometry extracted from the user's ref_065 PCB."""
+    import skill
+
+    fixture = json.loads((Path(__file__).parent / "fixtures/ref_065_t1.json").read_text())
+    cx, cy = [round(float(v) * 1_000_000) for v in fixture["at"]]
+    angle = math.radians(rotation)
+    def rotate(x, y):
+        return (round(x * math.cos(angle) - y * math.sin(angle)),
+                round(x * math.sin(angle) + y * math.cos(angle)))
+
+    footprint = FootprintInstance()
+    footprint.position = Vector2.from_xy(cx, cy)
+    footprint.reference_field.text.value = reference
+    pads = []
+    for data in fixture["pads"]:
+        pad = Pad()
+        x, y = rotate(*(float(v) * 1_000_000 for v in data["at"]))
+        pad.position = Vector2.from_xy(cx + x, cy + y)
+        pad.net = Net(name=data["net"])
+        pad.pad_type = PadType.PT_SMD
+        sx, sy = [round(float(v) * 1_000_000) for v in data["size"]]
+        pad.padstack.copper_layers[0].size = Vector2.from_xy(
+            *((sy, sx) if rotation % 180 else (sx, sy)))
+        pads.append(pad)
+        if data["number"] == "7":
+            source = pad
+    dx, dy = rotate(0, 1)
+    blocker = Track()
+    blocker.start = Vector2.from_xy(source.position.x + dx * 2_000_000 - dy * 5_000_000,
+                                   source.position.y + dy * 2_000_000 + dx * 5_000_000)
+    blocker.end = Vector2.from_xy(source.position.x + dx * 2_000_000 + dy * 5_000_000,
+                                 source.position.y + dy * 2_000_000 - dx * 5_000_000)
+    blocker.width = 1_000_000
+    blocker.layer = BoardLayer.BL_F_Cu
+    blocker.net = Net(name="VCC")
+    for adapter_type in (KiCadBoardAdapter, skill.KiCadBoardAdapter):
+        adapter = adapter_type(object(), FakeBoard([]))
+        position = adapter._find_fanout_position(
+            source, footprint, BoardLayer.BL_F_Cu,
+            [[(0, 0), (100_000_000, 0), (100_000_000, 100_000_000), (0, 100_000_000)]],
+            [(p.position.x, p.position.y, adapter._pad_radius(p), p) for p in pads],
+            [], [blocker] if blocked else [], 4_000_000, 400_000, 500_000,
+        )
+        if blocked:
+            assert position is None
+        else:
+            assert position is not None
+            vx, vy = position.x - source.position.x, position.y - source.position.y
+            assert vx * dx + vy * dy > 0
+            assert vx * dy - vy * dx == 0
+
+
+@pytest.mark.parametrize("portable", [False, True])
+def test_ref_065_complete_board_fanout(portable):
+    from google.protobuf.json_format import ParseDict
+    import skill
+
+    fixture = json.loads((Path(__file__).parent / "fixtures/ref_065_fanout.json").read_text())
+    classes = {cls.__name__: cls for cls in (FootprintInstance, Track, Via)}
+    items = []
+    for value in fixture["items"]:
+        instance = classes[value["type"]]()
+        proto = type(instance.proto)()
+        ParseDict(value["data"], proto)
+        items.append(type(instance)(proto))
+    for loop_index, loop in enumerate(fixture["loops"]):
+        items.extend(edge_segment(f"edge-{loop_index}-{i}", start, end)
+                     for i, (start, end) in enumerate(zip(loop, loop[1:] + loop[:1])))
+    board = FillBoard(items)
+    adapter_type = skill.KiCadBoardAdapter if portable else KiCadBoardAdapter
+    assert adapter_type(object(), board).fanout_net("GND") > 0
+    created = {(t.start.x, t.start.y): t for t in board.created if isinstance(t, Track)}
+    targets = [(48_050_000, 73_340_000), (48_450_000, 71_690_000),
+               (49_650_000, 59_500_000), (44_650_000, 67_630_000)]
+    assert all(start in created for start in targets)
+    t4, t7 = [created[start] for start in targets[2:]]
+    assert t4.end.x == t4.start.x and t4.end.y < t4.start.y
+    assert t7.end.x == t7.start.x and t7.end.y > t7.start.y
+    # Independent distances to the actual blocking copper in the source PCB.
+    # C2.2 top edge = 70.040 - 1.150/2 mm; T1.7 via radius = 0.250 mm.
+    assert 69_465_000 - (t7.end.y + 250_000) >= 200_000
+    # Other-net horizontal trace at y=57.600 mm, width=0.400 mm.
+    assert (t4.end.y - 250_000) - 57_800_000 >= 200_000
+
+
+def test_fanout_via_checks_back_layer_and_drilled_holes():
+    pad = Pad()
+    pad.position = Vector2.from_xy(0, 0)
+    pad.padstack.copper_layers[0].layer = BoardLayer.BL_B_Cu
+    pad.padstack.copper_layers[0].size = Vector2.from_xy(2_000_000, 1_000_000)
+    assert KiCadBoardAdapter._fanout_via_hits_pad((1_400_000, 0), 250_000, pad)
+    assert not KiCadBoardAdapter._fanout_via_hits_pad((1_500_000, 0), 250_000, pad)
+    pad.padstack.copper_layers[0].size = Vector2.from_xy(0, 0)
+    pad.padstack.drill.diameter = Vector2.from_xy(1_000_000, 1_000_000)
+    assert KiCadBoardAdapter._fanout_via_hits_pad((900_000, 0), 250_000, pad)
+
+
+def test_fanout_ignores_offset_paste_aperture_but_keeps_copper():
+    footprint = FootprintInstance()
+    paste = Pad()
+    paste.pad_type = PadType.PT_SMD
+    paste.padstack.layers = [BoardLayer.BL_F_Paste]
+    paste.position = Vector2.from_xy(750_000, 550_000)
+    paste.padstack.copper_layers[0].size = Vector2.from_xy(890_000, 1_210_000)
+    footprint.definition.add_item(paste)
+    assert KiCadBoardAdapter._fanout_pad_obstacles([footprint]) == []
+    paste.padstack.layers = [BoardLayer.BL_F_Cu, BoardLayer.BL_F_Paste]
+    assert len(KiCadBoardAdapter._fanout_pad_obstacles([footprint])) == 1
 
 
 class FakeBoard:
@@ -785,11 +901,10 @@ def test_fanout_via_avoids_other_on_board_pads():
     KiCadBoardAdapter(object(), board).fanout_net("GND")
 
     via = board.created[1]
-    blocker_radius = math.hypot(1_000_000, 1_000_000) / 2
-    assert math.hypot(
-        via.position.x - blocker.position.x,
-        via.position.y - blocker.position.y,
-    ) >= blocker_radius + 300_000 + 200_000
+    # Distance to the actual square copper, not to its circumscribed circle.
+    dx = max(abs(via.position.x - blocker.position.x) - 500_000, 0)
+    dy = max(abs(via.position.y - blocker.position.y) - 500_000, 0)
+    assert math.hypot(dx, dy) >= via.diameter / 2 + 200_000
     assert via.position.x == source.position.x or via.position.y == source.position.y
 
 
@@ -836,8 +951,11 @@ def test_fanout_trace_uses_rectangular_pad_clearance_instead_of_diagonal_radius(
     KiCadBoardAdapter(object(), board).fanout_net("GND", 0.5)
 
     track = board.created[0]
-    assert track.start.x == track.end.x == source.position.x
-    assert abs(track.end.y - track.start.y) == 2_300_000
+    # The horizontal gap also fits the via when rectangular copper is used.
+    assert track.start.y == track.end.y == source.position.y
+    assert track.end.x == 9_000_000
+    via = board.created[1]
+    assert via.position.x - via.diameter / 2 - (7_750_000 + 550_000) >= 200_000
 
 
 def test_fanout_trace_avoids_crossing_other_net_track_on_same_layer():

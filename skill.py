@@ -664,6 +664,7 @@ from kipy.board_types import (
 )
 from kipy.kicad import KiCad
 from kipy.geometry import Angle, PolygonWithHoles, PolyLine, PolyLineNode, Vector2
+from kipy.util.board_layer import is_copper_layer
 from kipy.proto.common.commands.editor_commands_pb2 import RAS_OK
 from kipy.proto.common import types as common_types
 from kipy.proto.common.types import KiCadObjectType
@@ -1460,6 +1461,11 @@ class KiCadBoardAdapter:
         for footprint in footprints:
             pads = list(footprint.definition.pads)
             for pad in pads:
+                # IPC can retain a padstack shape even for paste-only apertures.
+                if pad.padstack.layers and not any(
+                    is_copper_layer(layer) for layer in pad.padstack.layers
+                ) and pad.pad_type == PadType.PT_SMD:
+                    continue
                 duplicate_aperture = (
                     pad.pad_type == PadType.PT_SMD
                     and not str(pad.number).strip()
@@ -1594,20 +1600,49 @@ class KiCadBoardAdapter:
             reverse=True,
         )
 
+        reference = footprint.reference_field.text.value.strip().upper()
+        if reference.startswith(("L", "T")):
+            # Sorting alone can select a shorter route underneath the body.
+            # Restrict magnetic parts to the pad's outer cardinal direction.
+            outward = max(abs(radial_x), abs(radial_y))
+            directions = [
+                direction for direction in directions
+                if outward > 0
+                and radial_x * direction[0] + radial_y * direction[1] == outward
+            ]
+
         candidates = []
+        close_candidates = []
         for preference, (direction_x, direction_y) in enumerate(directions):
+            copper_exit = max(
+                self.FANOUT_LENGTH_NM,
+                self._pad_extent_in_direction(pad, direction_x, direction_y) + via_radius,
+            )
             distance = max(
                 self.FANOUT_LENGTH_NM,
                 self._pad_extent_in_direction(pad, direction_x, direction_y)
                 + via_radius
                 + self.FANOUT_PAD_CLEARANCE_NM,
             )
+            # Prefer a gap to the source pad, but it is the same net: a via
+            # tangent to that pad is valid when the preferred gap cannot fit.
+            closer = distance - self.FANOUT_SEARCH_STEP_NM
+            while closer > copper_exit:
+                close_candidates.append((-closer, preference, direction_x, direction_y))
+                closer -= self.FANOUT_SEARCH_STEP_NM
+            if copper_exit < distance and copper_exit <= max_search:
+                close_candidates.append((-copper_exit, preference, direction_x, direction_y))
             while distance <= max_search:
                 candidates.append((distance, preference, direction_x, direction_y))
                 distance += self.FANOUT_SEARCH_STEP_NM
 
         # Align the via with the pad center to keep the single trace orthogonal.
-        for distance, _preference, direction_x, direction_y in sorted(candidates):
+        ordered_candidates = sorted(candidates) + [
+            (-distance, preference, dx, dy)
+            for distance, preference, dx, dy in sorted(close_candidates)
+            if -distance <= max_search
+        ]
+        for distance, _preference, direction_x, direction_y in ordered_candidates:
             candidate = (
                 round(pad.position.x + distance * direction_x),
                 round(pad.position.y + distance * direction_y),
@@ -1624,6 +1659,7 @@ class KiCadBoardAdapter:
                 obstacle_pad is not pad
                 and math.hypot(candidate[0] - x, candidate[1] - y)
                 < via_radius + radius + self.FANOUT_PAD_CLEARANCE_NM
+                and self._fanout_via_hits_pad(candidate, via_radius, obstacle_pad)
                 for x, y, radius, obstacle_pad in pad_obstacles
             ):
                 continue
@@ -1660,6 +1696,20 @@ class KiCadBoardAdapter:
         return None
 
     @classmethod
+    def _fanout_via_hits_pad(cls, position, radius, pad) -> bool:
+        """Check all pad copper envelopes, without inflating rectangles to circles."""
+        if any(
+            cls._fanout_trace_hits_pad(position, position, pad, copper.layer, radius * 2)
+            for copper in pad.padstack.copper_layers
+        ):
+            return True
+        drill = pad.padstack.drill.diameter
+        drill_radius = math.hypot(drill.x, drill.y) / 2
+        return drill_radius > 0 and math.hypot(
+            position[0] - pad.position.x, position[1] - pad.position.y
+        ) < radius + drill_radius + cls.FANOUT_PAD_CLEARANCE_NM
+
+    @classmethod
     def _fanout_trace_hits_pad(
         cls,
         start,
@@ -1670,9 +1720,7 @@ class KiCadBoardAdapter:
     ) -> bool:
         """Return whether a trace violates clearance to pad copper on its layer.
 
-        Pad-to-via placement deliberately uses a conservative circular bound because
-        a through via crosses every copper layer.  A trace, however, must not inherit
-        that bound: the half-diagonal of a long rectangular pad can be much larger
+        The half-diagonal of a long rectangular pad can be much larger
         than its extent toward a parallel trace.  Transform the trace into each pad
         copper shape's local coordinates and measure it against that shape's
         axis-aligned rectangular envelope instead.

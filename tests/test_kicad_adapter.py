@@ -26,12 +26,143 @@ from kilog.kicad_adapter import KiCadBoardAdapter
 from kilog.recorder import RecorderError
 
 
+def test_fanout_uses_explicit_gap_for_trace_and_via():
+    adapter = KiCadBoardAdapter
+    pad = Pad()
+    pad.position = Vector2.from_xy(400_000, 0)
+    pad.padstack.copper_layers[0].size = Vector2.from_xy(230_000, 230_000)
+    layer = pad.padstack.copper_layers[0].layer
+    start = (0, 0)
+    assert not adapter._fanout_trace_hits_pad(
+        start, (-500_000, 0), pad, layer, 200_000, clearance_nm=185_000
+    )
+    assert adapter._fanout_trace_hits_pad(
+        start, (10_000, 0), pad, layer, 200_000, clearance_nm=185_000
+    )
+    assert adapter._fanout_via_hits_pad(start, 100_000, pad)
+    assert not adapter._fanout_via_hits_pad(start, 100_000, pad, 185_000)
+    assert adapter._fanout_trace_hits_pad(
+        (300_000, 0), (-500_000, 0), pad, layer, 200_000,
+        clearance_nm=0,
+    )
+
+
+def test_fanout_preserves_tight_start_track_gap_without_allowing_approach():
+    obstacle = Track()
+    obstacle.start = Vector2.from_xy(0, 400_000)
+    obstacle.end = Vector2.from_xy(500_000, 400_000)
+    obstacle.width = 200_000
+    obstacle.net = Net(name="VCC")
+    obstacle.layer = BoardLayer.BL_F_Cu
+    check = KiCadBoardAdapter._fanout_hits_other_net_track
+    for end, blocked in [((-500_000, 0), False), ((-500_000, 100_000), True)]:
+        assert check(
+            (0, 50_000), end, obstacle.layer, "GND", 200_000, 150_000, [obstacle],
+            clearance_nm=150_000,
+        ) == blocked
+
+
+def test_fanout_start_gap_applies_to_different_obstacle_downstream():
+    source = Pad()
+    source.position = Vector2.from_xy(0, 0)
+    source.net = Net(name="GND")
+    neighbor = Pad()
+    neighbor.position = Vector2.from_xy(400_000, 0)
+    neighbor.padstack.copper_layers[0].size = Vector2.from_xy(230_000, 230_000)
+    layer = neighbor.padstack.copper_layers[0].layer
+    adapter = KiCadBoardAdapter
+    gap = adapter._fanout_start_clearance(
+        source, layer, 200_000, [(400_000, 0, 200_000, neighbor)], [], []
+    )
+    assert gap == 185_000
+    downstream = Pad()
+    downstream.position = Vector2.from_xy(-500_000, 400_000)
+    downstream.padstack.copper_layers[0].size = Vector2.from_xy(230_000, 230_000)
+    assert adapter._fanout_trace_hits_pad((0, 0), (-500_000, 0), downstream, layer, 200_000)
+    assert not adapter._fanout_trace_hits_pad(
+        (0, 0), (-500_000, 0), downstream, layer, 200_000, clearance_nm=gap
+    )
+
+
+def test_fanout_bends_45_degrees_after_cardinal_escape_and_detects_existing_route(monkeypatch):
+    fp = with_id(FootprintInstance(), "bga")
+    fp.position = Vector2.from_xy(51_650_000, 48_050_000)
+    fp.layer = BoardLayer.BL_F_Cu
+    fp.reference_field.text.value = "U1"
+    for number, x, y, net in [
+        ("A2", 51_250_000, 47_850_000, "GND"),
+        ("A1", 51_250_000, 48_249_999, "VIN"),
+        ("B2", 51_650_000, 47_850_000, "SW"),
+    ]:
+        pad = Pad()
+        pad.number = number
+        pad.position = Vector2.from_xy(x, y)
+        pad.net = Net(name=net)
+        pad.pad_type = PadType.PT_SMD
+        pad.padstack.copper_layers[0].size = Vector2.from_xy(230_000, 230_000)
+        fp.definition.add_item(pad)
+    vin = with_id(Track(), "vin")
+    vin.start = Vector2.from_xy(49_525_000, 48_250_000)
+    vin.end = Vector2.from_xy(51_250_000, 48_250_000)
+    vin.width = 200_000
+    vin.layer = BoardLayer.BL_F_Cu
+    vin.net = Net(name="VIN")
+    board = FillBoard([fp, vin,
+        edge_segment("e1", (40_000_000, 43_000_000), (60_000_000, 43_000_000)),
+        edge_segment("e2", (60_000_000, 43_000_000), (60_000_000, 57_000_000)),
+        edge_segment("e3", (60_000_000, 57_000_000), (40_000_000, 57_000_000)),
+        edge_segment("e4", (40_000_000, 57_000_000), (40_000_000, 43_000_000)),
+    ])
+    adapter = KiCadBoardAdapter(object(), board)
+    monkeypatch.setattr(adapter, "_find_fanout_position", lambda *args: None)
+    assert adapter.fanout_net("GND") == 1
+    first, second, via = board.created
+    assert isinstance(first, Track) and isinstance(second, Track) and isinstance(via, Via)
+    assert first.start.y == first.end.y
+    assert (first.end.x, first.end.y) == (second.start.x, second.start.y)
+    assert abs(second.end.x - second.start.x) == abs(second.end.y - second.start.y) > 0
+    assert (via.position.x, via.position.y) == (second.end.x, second.end.y)
+    assert adapter._pad_is_fanned_out(fp.definition.pads[0], [vin, first, second], [via])
+
+
+def test_undo_keeps_native_result_even_when_requested_snapshot_differs(monkeypatch):
+    from types import SimpleNamespace
+    from kipy.proto.common.commands.editor_commands_pb2 import RAS_OK
+    from tests.helpers import snapshot, item
+
+    actions = []
+    kicad = SimpleNamespace(run_action=lambda name: (
+        actions.append(name) or SimpleNamespace(status=RAS_OK)))
+    adapter = KiCadBoardAdapter(kicad, object())
+    native_result = snapshot(item("track", "track", width=100))
+    monkeypatch.setattr(adapter, "_snapshot_with_retry", lambda: native_result)
+    monkeypatch.setattr(adapter, "_restore_exactly", lambda *a: pytest.fail(
+        "Must not create a synthetic undo commit"))
+
+    result, strategy = adapter.undo_to(snapshot())
+
+    assert actions == ["common.Interactive.undo"]
+    assert result is native_result
+    assert strategy == "native"
+
+
+def test_rejected_native_undo_does_not_restore_snapshot(monkeypatch):
+    from types import SimpleNamespace
+    from tests.helpers import snapshot
+
+    adapter = KiCadBoardAdapter(SimpleNamespace(
+        run_action=lambda name: SimpleNamespace(status=-1)), object())
+    monkeypatch.setattr(adapter, "_restore_exactly", lambda *a: pytest.fail(
+        "Rejected undo must not modify the board"))
+    with pytest.raises(RecorderError, match="native Undo"):
+        adapter.undo_to(snapshot())
+
+
 @pytest.mark.parametrize("reference", ["T1", "L1"])
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 @pytest.mark.parametrize("blocked", [False, True])
 def test_ref_065_t1_pad7_only_fans_outward(reference, rotation, blocked):
     """Use the actual T1 pad geometry extracted from the user's ref_065 PCB."""
-    import skill
 
     fixture = json.loads((Path(__file__).parent / "fixtures/ref_065_t1.json").read_text())
     cx, cy = [round(float(v) * 1_000_000) for v in fixture["at"]]
@@ -65,27 +196,23 @@ def test_ref_065_t1_pad7_only_fans_outward(reference, rotation, blocked):
     blocker.width = 1_000_000
     blocker.layer = BoardLayer.BL_F_Cu
     blocker.net = Net(name="VCC")
-    for adapter_type in (KiCadBoardAdapter, skill.KiCadBoardAdapter):
-        adapter = adapter_type(object(), FakeBoard([]))
-        position = adapter._find_fanout_position(
-            source, footprint, BoardLayer.BL_F_Cu,
-            [[(0, 0), (100_000_000, 0), (100_000_000, 100_000_000), (0, 100_000_000)]],
-            [(p.position.x, p.position.y, adapter._pad_radius(p), p) for p in pads],
-            [], [blocker] if blocked else [], 4_000_000, 400_000, 500_000,
-        )
-        if blocked:
-            assert position is None
-        else:
-            assert position is not None
-            vx, vy = position.x - source.position.x, position.y - source.position.y
-            assert vx * dx + vy * dy > 0
-            assert vx * dy - vy * dx == 0
+    adapter = KiCadBoardAdapter(object(), FakeBoard([]))
+    position = adapter._find_fanout_position(
+        source, footprint, BoardLayer.BL_F_Cu,
+        [[(0, 0), (100_000_000, 0), (100_000_000, 100_000_000), (0, 100_000_000)]],
+        [(p.position.x, p.position.y, adapter._pad_radius(p), p) for p in pads],
+        [], [blocker] if blocked else [], 4_000_000, 400_000, 500_000,
+    )
+    if blocked:
+        assert position is None
+    else:
+        assert position is not None
+        vx, vy = position.x - source.position.x, position.y - source.position.y
+        assert vx * dx + vy * dy > 0
+        assert vx * dy - vy * dx == 0
 
-
-@pytest.mark.parametrize("portable", [False, True])
-def test_ref_065_complete_board_fanout(portable):
+def test_ref_065_complete_board_fanout():
     from google.protobuf.json_format import ParseDict
-    import skill
 
     fixture = json.loads((Path(__file__).parent / "fixtures/ref_065_fanout.json").read_text())
     classes = {cls.__name__: cls for cls in (FootprintInstance, Track, Via)}
@@ -99,8 +226,7 @@ def test_ref_065_complete_board_fanout(portable):
         items.extend(edge_segment(f"edge-{loop_index}-{i}", start, end)
                      for i, (start, end) in enumerate(zip(loop, loop[1:] + loop[:1])))
     board = FillBoard(items)
-    adapter_type = skill.KiCadBoardAdapter if portable else KiCadBoardAdapter
-    assert adapter_type(object(), board).fanout_net("GND") > 0
+    assert KiCadBoardAdapter(object(), board).fanout_net("GND") > 0
     created = {(t.start.x, t.start.y): t for t in board.created if isinstance(t, Track)}
     targets = [(48_050_000, 73_340_000), (48_450_000, 71_690_000),
                (49_650_000, 59_500_000), (44_650_000, 67_630_000)]
@@ -1125,9 +1251,9 @@ def test_fanout_scales_all_sizes_from_widest_trace_on_component(connected_width)
 
     KiCadBoardAdapter(object(), board).fanout_net("GND")
 
-    assert board.created[0].width == max(300_000, connected_width)
-    expected_drill = max(200_000, round(connected_width * 0.3 / 0.4))
-    assert board.created[1].diameter == max(300_000, expected_drill + 1, round(connected_width * 0.5 / 0.4))
+    assert board.created[0].width == max(200_000, connected_width)
+    expected_drill = max(100_000, round(connected_width * 0.3 / 0.4))
+    assert board.created[1].diameter == max(200_000, expected_drill + 1, round(connected_width * 0.5 / 0.4))
     assert board.created[1].drill_diameter == expected_drill
 
 
@@ -1232,6 +1358,7 @@ def test_fanout_commits_successes_before_reporting_incomplete_pads(monkeypatch):
         return find_position(pad, *args, **kwargs)
 
     monkeypatch.setattr(adapter, "_find_fanout_position", fail_second_pad)
+    monkeypatch.setattr(adapter, "_find_bent_fanout", lambda *args: None)
 
     with pytest.raises(
         RecorderError,
@@ -1359,14 +1486,6 @@ def test_replay_zone_refill_rebuilds_derived_copper_polygons():
     assert result.items["zone-front"].data["filled"] is True
     assert board.refilled
     assert board.commit_count == 1
-
-
-def test_portable_skill_uses_same_serialized_copper_settings():
-    import skill
-
-    expected = KiCadBoardAdapter._new_copper_zone()
-    actual = skill.KiCadBoardAdapter._new_copper_zone()
-    assert actual.proto.copper_settings == expected.proto.copper_settings
 
 
 def test_fanout_width_prefers_widest_over_closest_endpoint():

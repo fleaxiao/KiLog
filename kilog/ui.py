@@ -930,7 +930,7 @@ class KiLogWindow(wx.Frame):
         copper_row = wx.BoxSizer(wx.HORIZONTAL)
         self.fill_board_button = self._button(
             skill_page,
-            "Fill",
+            "GNDfill",
             self._on_fill_board,
         )
         self.fill_board_button.SetMinSize(self.FromDIP((72, 25)))
@@ -1097,20 +1097,15 @@ class KiLogWindow(wx.Frame):
 
     def _configure_shortcuts(self) -> None:
         self._note_hotkey_id = int(wx.NewIdRef())
-        self._undo_hotkey_id = int(wx.NewIdRef())
-        self._undo_command_id = int(wx.NewIdRef())
         self.SetAcceleratorTable(
             wx.AcceleratorTable(
                 [
                     (wx.ACCEL_CTRL, ord("D"), self.note_button.GetId()),
-                    (wx.ACCEL_CTRL, ord("Z"), self._undo_command_id),
                 ]
             )
         )
         self.Bind(wx.EVT_MENU, self._on_note_shortcut, id=self.note_button.GetId())
-        self.Bind(wx.EVT_MENU, self._on_undo_shortcut, id=self._undo_command_id)
         self.Bind(wx.EVT_HOTKEY, self._on_note_shortcut, id=self._note_hotkey_id)
-        self.Bind(wx.EVT_HOTKEY, self._on_undo_shortcut, id=self._undo_hotkey_id)
         self.note_button.SetToolTip("Mark current recorded step (Ctrl+D)")
 
     def _sync_pcb_hotkeys(self) -> None:
@@ -1123,18 +1118,9 @@ class KiLogWindow(wx.Frame):
                 wx.MOD_CONTROL,
                 ord("D"),
             )
-            undo_registered = self.RegisterHotKey(
-                self._undo_hotkey_id,
-                wx.MOD_CONTROL,
-                ord("Z"),
-            )
-            if note_registered and undo_registered:
+            if note_registered:
                 self._pcb_hotkeys_registered = True
                 return
-            if note_registered:
-                self.UnregisterHotKey(self._note_hotkey_id)
-            if undo_registered:
-                self.UnregisterHotKey(self._undo_hotkey_id)
             return
         self._unregister_pcb_hotkeys()
 
@@ -1142,16 +1128,11 @@ class KiLogWindow(wx.Frame):
         if not self._pcb_hotkeys_registered:
             return
         self.UnregisterHotKey(self._note_hotkey_id)
-        self.UnregisterHotKey(self._undo_hotkey_id)
         self._pcb_hotkeys_registered = False
 
     def _on_note_shortcut(self, event: wx.CommandEvent) -> None:
         if self.note_button.IsEnabled():
             self._on_note(event)
-
-    def _on_undo_shortcut(self, event: wx.CommandEvent) -> None:
-        if self.recorder.recording:
-            self._on_undo(event)
 
     def _set_controls(self, running: bool) -> None:
         self.start_button.Enable(True)
@@ -1401,10 +1382,18 @@ class KiLogWindow(wx.Frame):
                 )
                 if checkbox.GetValue()
             )
-            self.recorder.adapter.fill_board_copper(
-                self.copper_net_entry.GetValue(),
-                layers,
-            )
+            self.recorder.flush()
+            try:
+                self.recorder.adapter.fill_board_copper(
+                    self.copper_net_entry.GetValue(),
+                    layers,
+                )
+                # Preserve the outline and actual fill as separate replay steps.
+                self.recorder.flush(single_step=True)
+                self.recorder.adapter.refill_board_copper()
+            finally:
+                self.recorder.flush(single_step=True)
+                self._refresh_record()
 
         self._run_action(action)
 
@@ -1439,8 +1428,9 @@ class KiLogWindow(wx.Frame):
             self._move_to_pcb_bottom_left()
         try:
             if self.recorder.recording:
+                previous_count = self.recorder.event_count
                 event = self.recorder.poll()
-                if event:
+                if event or self.recorder.event_count != previous_count:
                     self._refresh_record()
             if self.replay.playing and self.replay.tick():
                 self._sync_replay_controls()
@@ -1490,17 +1480,15 @@ class KiLogWindow(wx.Frame):
         self.replay.pause()
         self._unregister_pcb_hotkeys()
         if self.recorder.recording and not self._closing_after_pcb_exit:
-            try:
-                self.recorder.end()
-            except Exception as exc:
-                result = wx.MessageBox(
-                    f"The final change could not be saved: {exc}\nClose anyway?",
-                    "KiLog",
-                    wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
-                    self,
-                )
-                if result != wx.YES:
-                    self.timer.Start(self.POLL_MS)
-                    event.Veto()
-                    return
+            result = wx.MessageBox(
+                "The recording has not been saved. Close and discard it?\n"
+                "Choose No, then click Stop to save the recording.",
+                "KiLog",
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+                self,
+            )
+            if result != wx.YES:
+                self.timer.Start(self.POLL_MS)
+                event.Veto()
+                return
         event.Skip()

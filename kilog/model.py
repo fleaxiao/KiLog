@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import copy
 import hashlib
 import json
 from typing import Any, Mapping
@@ -55,17 +56,38 @@ class BoardSnapshot:
         )
 
 
+def restored_item_data(state: ItemState, *, ignore_zone_fill: bool = False) -> dict:
+    """Editable state, excluding regenerated child IDs and zone fill caches."""
+    data = copy.deepcopy(dict(state.data))
+    if state.kind == "zone":
+        if ignore_zone_fill:
+            data.pop("filled", None)
+        data.pop("filled_polygons", None)
+    if state.kind == "footprint":
+        data.pop("definition", None)
+        for name in ("reference_field", "value_field", "datasheet_field", "description_field"):
+            field_data = data.get(name)
+            if isinstance(field_data, dict):
+                text = field_data.get("text")
+                if isinstance(text, dict):
+                    text.pop("id", None)
+    return data
+
+
 def snapshots_match_restored_state(
     restored: BoardSnapshot,
     target: BoardSnapshot,
+    *,
+    ignore_zone_fill: bool = False,
 ) -> bool:
     """Compare restored states using the semantics KiLog can replay.
 
     KiCad may repack a footprint's library definition when a complete
     ``FootprintInstance`` is sent through the IPC API. The repacked protobuf
     can differ in default fields or child ordering even though the instance's
-    replayable state was restored correctly. Tracks, vias, zones, and board
-    graphics remain exact because their complete definitions are replayed.
+    replayable state was restored correctly. Field text IDs may also be
+    regenerated. The filled flag is an observable operation and must match
+    unless explicitly tolerating fill invalidation during structural undo.
     """
     if restored.fingerprint == target.fingerprint:
         return True
@@ -76,16 +98,8 @@ def snapshots_match_restored_state(
         actual = restored.items[item_uuid]
         if actual.kind != expected.kind or actual.type_name != expected.type_name:
             return False
-        if expected.kind != "footprint":
-            if actual.log_value() != expected.log_value():
-                return False
-            continue
-        actual_instance = {
-            key: value for key, value in actual.data.items() if key != "definition"
-        }
-        expected_instance = {
-            key: value for key, value in expected.data.items() if key != "definition"
-        }
-        if actual_instance != expected_instance:
+        if restored_item_data(actual, ignore_zone_fill=ignore_zone_fill) != restored_item_data(
+            expected, ignore_zone_fill=ignore_zone_fill
+        ):
             return False
     return True

@@ -70,6 +70,21 @@ def test_restored_footprint_still_requires_replayable_fields_to_match():
     assert not snapshots_match_restored_state(wrong_position, target)
 
 
+def test_restored_field_ids_are_ignored_but_text_position_and_zone_outline_are_not():
+    def board(child_id, text="U1", x=10, outline=None):
+        return snapshot(
+            state("fp", "footprint", reference_field={"text": {
+                "id": {"value": child_id}, "text": text, "position": {"x_nm": x}}}),
+            state("zone", "zone", outline=outline or [1, 2]),
+        )
+    initial = board("old")
+    assert snapshots_match_restored_state(board("new"), initial)
+    assert not snapshots_match_restored_state(board("new", text="U2"), initial)
+    assert not snapshots_match_restored_state(board("new", x=20), initial)
+    assert not snapshots_match_restored_state(board("new", outline=[2, 3]), initial)
+    assert initial.items["fp"].data["reference_field"]["text"]["id"]["value"] == "old"
+
+
 def test_restored_non_footprint_items_remain_exact():
     target = snapshot(state("track-1", "track", width={"value_nm": "400000"}))
     restored = snapshot(state("track-1", "track", width={"value_nm": "500000"}))

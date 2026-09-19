@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-import time
 from typing import Protocol, TYPE_CHECKING
 from uuid import uuid4
 
@@ -41,7 +40,9 @@ class BoardAdapter(Protocol):
 
     def save_copy(self, path: Path) -> None: ...
 
-    def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int: ...
+    def fill_board_copper(self, net_name: str | None, layer_names: tuple[str, ...]) -> int: ...
+
+    def refill_board_copper(self) -> None: ...
 
     def fanout_net(
         self,
@@ -97,7 +98,6 @@ class Recorder:
             config.overwrite_existing,
         )
         output = self.adapter.output_directory
-        output.mkdir(parents=True, exist_ok=True)
         log_path = output / f"{pcb_stem}.json"
         if log_path.exists() and not config.overwrite_existing:
             raise LogFileExistsError(
@@ -109,15 +109,6 @@ class Recorder:
         self.initial_pcb_path = str(
             getattr(self.adapter, "board_path", None) or baseline.board_name
         )
-        try:
-            if config.overwrite_existing:
-                write_json_atomic(log_path, self._log_document(baseline))
-            else:
-                write_json_new(log_path, self._log_document(baseline))
-        except FileExistsError as exc:
-            raise LogFileExistsError(
-                f"{log_path.name} already exists in the PCB directory."
-            ) from exc
         self.log_path = log_path
         self.baseline = baseline
         self.pending = None
@@ -147,12 +138,11 @@ class Recorder:
             }
             for index, step in enumerate(branch.steps, 1)
         ]
-        config = RecorderConfig(pcb_stem=branch.path.stem)
+        config = RecorderConfig(pcb_stem=branch.path.stem, overwrite_existing=True)
         self.config = config
         self.session_uuid = str(uuid4())
         self.initial_pcb_path = branch.initial_pcb_path
         self.log_path = branch.path
-        write_json_atomic(branch.path, self._log_document(baseline, events))
         self.events = events
         self.history = list(branch.snapshots[:-1])
         self.baseline = baseline
@@ -165,8 +155,6 @@ class Recorder:
         self,
         baseline: BoardSnapshot,
         events: list[dict] | None = None,
-        *,
-        silkscreen_last: bool = False,
     ) -> dict:
         recorded_events = self.events if events is None else events
         board_path = self.initial_pcb_path
@@ -191,92 +179,102 @@ class Recorder:
                         "changes": changes,
                     }
                 )
-        if silkscreen_last:
-            steps = self._move_silkscreen_changes_to_last_step(steps, baseline)
         return {
             "initial_pcb_path": str(board_path),
             "steps": steps,
         }
 
-    @classmethod
-    def _move_silkscreen_changes_to_last_step(
-        cls,
-        steps: list[dict],
-        final_snapshot: BoardSnapshot,
-    ) -> list[dict]:
-        """Collect footprint silk-field edits into one final replay step."""
-        regular_steps = []
-        silkscreen_changes: dict[tuple[str, str], dict] = {}
-        unused_step_uuids = []
+    @staticmethod
+    def _finalize_document(
+        document: dict, final_snapshot: BoardSnapshot, initial_snapshot: BoardSnapshot,
+    ) -> dict:
+        """Compact the saved log only; leave live history available for undo."""
+        result = copy.deepcopy(document)
+        merged = []
+        previous_transform_id = None
+        for step in result["steps"]:
+            changes = step["changes"]
+            transform_id = (
+                changes[0].get("id")
+                if len(changes) == 1 and changes[0].get("operation") == "footprint.move"
+                else None
+            )
+            if transform_id is not None and transform_id == previous_transform_id:
+                merged[-1]["changes"] = changes
+            else:
+                merged.append(step)
+            previous_transform_id = transform_id
 
-        for step in steps:
+        # Classify standalone silk text/graphics across their entire lifecycle,
+        # including items created and removed within the recording.
+        silk_items = {}
+        for snapshot in (initial_snapshot, final_snapshot):
+            for item_id, state in snapshot.items.items():
+                if state.kind in {"text", "shape"}:
+                    silk_items[item_id] = silk_items.get(item_id, True) and (
+                        state.data.get("layer") in {"BL_F_SilkS", "BL_B_SilkS"})
+        for step in merged:
+            for change in step["changes"]:
+                if str(change.get("operation", "")).split(".")[0] not in {"text", "shape"}:
+                    continue
+                data = change.get("item", {}).get("data", {})
+                item_id = change.get("id") or data.get("id", {}).get("value")
+                if data or change.get("path", "").endswith("/layer"):
+                    layer = data.get("layer") if data else change.get("value")
+                    silk_items[item_id] = silk_items.get(item_id, True) and (
+                        layer in {"BL_F_SilkS", "BL_B_SilkS"})
+
+        regular_steps = []
+        silk_changes = {}
+        silk_item_changes = []
+        silk_step_uuid = None
+        for step in merged:
             regular_changes = []
             for change in step["changes"]:
                 if change.get("operation") != "footprint.field.modify":
-                    regular_changes.append(change)
+                    item_id = change.get("id") or change.get("item", {}).get(
+                        "data", {}).get("id", {}).get("value")
+                    if silk_items.get(item_id, False):
+                        silk_item_changes.append(change)
+                    else:
+                        regular_changes.append(change)
                     continue
-                final_change = cls._change_with_final_snapshot_value(
-                    change,
-                    final_snapshot,
-                )
-                key = (str(change.get("id", "")), str(change.get("path", "")))
-                silkscreen_changes[key] = final_change
-
+                item_id, path = change["id"], change["path"]
+                state = final_snapshot.items.get(item_id)
+                if state is None:
+                    continue
+                # A later footprint move/rotation can also move its silk fields.
+                # Use the final board value rather than an earlier absolute value.
+                tokens = [part.replace("~1", "/").replace("~0", "~")
+                          for part in path.split("/")[1:]]
+                if tokens[:2] != ["items", item_id]:
+                    raise RecorderError("Invalid silkscreen field path in recording.")
+                value = state.log_value()
+                try:
+                    for token in tokens[2:]:
+                        value = value[int(token)] if isinstance(value, list) else value[token]
+                except (KeyError, IndexError, TypeError, ValueError):
+                    change.pop("value", None)
+                    change["delete"] = True
+                else:
+                    change["value"] = copy.deepcopy(value)
+                    change.pop("delete", None)
+                silk_changes[(item_id, path)] = change
             if regular_changes:
-                regular_steps.append(
-                    {
-                        "step": len(regular_steps) + 1,
-                        "step_uuid": step["step_uuid"],
-                        "changes": regular_changes,
-                    }
-                )
+                step["changes"] = regular_changes
+                regular_steps.append(step)
             else:
-                unused_step_uuids.append(step["step_uuid"])
-
-        if silkscreen_changes:
-            regular_steps.append(
-                {
-                    "step": len(regular_steps) + 1,
-                    "step_uuid": (
-                        unused_step_uuids[-1] if unused_step_uuids else str(uuid4())
-                    ),
-                    "changes": list(silkscreen_changes.values()),
-                }
-            )
-        return regular_steps
-
-    @staticmethod
-    def _change_with_final_snapshot_value(
-        change: dict,
-        final_snapshot: BoardSnapshot,
-    ) -> dict:
-        """Retarget a deferred silk edit to the recording's final board state."""
-        item_uuid = change.get("id")
-        path = change.get("path")
-        state = final_snapshot.items.get(item_uuid)
-        if state is None or not isinstance(path, str):
-            return copy.deepcopy(change)
-
-        parts = [
-            token.replace("~1", "/").replace("~0", "~")
-            for token in path.split("/")[1:]
-        ]
-        if len(parts) < 3 or parts[:2] != ["items", item_uuid]:
-            return copy.deepcopy(change)
-
-        value = state.log_value()
-        try:
-            for token in parts[2:]:
-                value = value[int(token)] if isinstance(value, list) else value[token]
-        except (KeyError, IndexError, TypeError, ValueError):
-            result = copy.deepcopy(change)
-            result.pop("value", None)
-            result["delete"] = True
-            return result
-
-        result = copy.deepcopy(change)
-        result["value"] = copy.deepcopy(value)
-        result.pop("delete", None)
+                silk_step_uuid = step["step_uuid"]
+        if silk_changes or silk_item_changes:
+            regular_steps.append({
+                "step_uuid": silk_step_uuid or str(uuid4()),
+                # Parent field replacements precede any nested field updates.
+                "changes": silk_item_changes + sorted(
+                    silk_changes.values(), key=lambda c: c["path"].count("/")),
+            })
+        for sequence, step in enumerate(regular_steps, 1):
+            step["step"] = sequence
+        result["steps"] = regular_steps
         return result
 
     @staticmethod
@@ -346,15 +344,8 @@ class Recorder:
         if not self.recording or self.baseline is None or self.preview_position is not None:
             return None
         current = self.adapter.snapshot()
-        clock = time.monotonic() if now is None else now
         if current.fingerprint == self.baseline.fingerprint:
             self.pending = None
-            return None
-        if self.pending is None or current.fingerprint != self.pending.fingerprint:
-            self.pending = current
-            self.pending_since = clock
-            return None
-        if clock - self.pending_since < self.config.settle_seconds:
             return None
         return self._commit(current)
 
@@ -374,251 +365,55 @@ class Recorder:
         *,
         single_step: bool = False,
     ) -> dict | None:
+        """Record one observed state without inventing transaction boundaries.
+
+        single_step remains accepted for callers that submit one IPC commit.
+        All observations now stay intact; IPC snapshots do not expose KiCad's
+        undo transaction IDs and cannot identify missed intermediate commits.
+        """
         assert self.baseline is not None
-        previous = self.baseline
-        new_events = []
-        new_history = []
-        targets = (
-            [current]
-            if single_step
-            else self._recording_targets(self.baseline, current)
+        if self._rewind_to_recorded_state(current):
+            return None
+        if snapshots_match_restored_state(current, self.baseline):
+            self.baseline = current
+            self.pending = None
+            return None
+        event = build_event(
+            self.baseline, current,
+            sequence=self.event_count + 1, session_uuid=self.session_uuid,
         )
-        for target in targets:
-            event = build_event(
-                previous,
-                target,
-                sequence=self.event_count + len(new_events) + 1,
-                session_uuid=self.session_uuid,
-            )
-            if event is not None:
-                new_history.append(previous)
-                new_events.append(event)
-            previous = target
         self.pending = None
-        if not new_events:
+        if event is None:
             self.baseline = current
             return None
         assert self.log_path is not None
-        reroute = self._coalesced_reroute_event(current, new_events)
-        if reroute is not None:
-            events = [*self.events[:-1], reroute]
-            write_json_atomic(self.log_path, self._log_document(self.baseline, events))
-            self.events = events
-            self.baseline = current
-            return reroute
-
-        event = new_events[-1]
-        coalesce = len(new_events) == 1 and self._can_coalesce_transform(event)
-        if coalesce:
-            original = self.history[-1]
-            merged = build_event(
-                original,
-                current,
-                sequence=self.event_count,
-                session_uuid=self.session_uuid,
-            )
-            assert merged is not None
-            event = merged
-            events = [*self.events[:-1], event]
-        else:
-            events = [*self.events, *new_events]
-        write_json_atomic(self.log_path, self._log_document(self.baseline, events))
+        events = [*self.events, event]
+        self.history.append(self.baseline)
         self.events = events
-        if not coalesce:
-            self.history.extend(new_history)
         self.baseline = current
         return event
 
-    def _coalesced_reroute_event(
-        self,
-        current: BoardSnapshot,
-        new_events: list[dict],
-    ) -> dict | None:
-        """Fuse a settled delete followed by redrawing the same connected path."""
-        if not self.history or not self.events or len(new_events) != 1:
-            return None
+    def _rewind_to_recorded_state(self, current: BoardSnapshot) -> bool:
+        """Follow an editor undo back to a state already observed in this session.
 
-        previous_changes = self.events[-1].get("changes", [])
-        current_changes = new_events[0].get("changes", [])
-        if not previous_changes or not current_changes:
-            return None
-        if not all(
-            change.get("item_kind") == "track"
-            and change.get("operation") == "routing.remove"
-            for change in previous_changes
-        ):
-            return None
-        if not all(
-            change.get("item_kind") == "track"
-            and change.get("operation") in {"routing.add", "routing.modify"}
-            for change in current_changes
-        ) or not any(
-            change.get("operation") == "routing.add" for change in current_changes
-        ):
-            return None
-
-        original = self.history[-1]
-        if len(self._recording_targets(original, current)) != 1:
-            return None
-        merged = build_event(
-            original,
-            current,
-            sequence=self.event_count,
-            session_uuid=self.session_uuid,
-        )
-        if merged is None:
-            return None
-        operations = {change.get("operation") for change in merged.get("changes", [])}
-        if not {"routing.add", "routing.remove"} <= operations or not all(
-            change.get("item_kind") == "track" for change in merged.get("changes", [])
-        ):
-            return None
-        return merged
-
-    @staticmethod
-    def _recording_targets(
-        before: BoardSnapshot,
-        after: BoardSnapshot,
-    ) -> list[BoardSnapshot]:
-        """Build intermediate states with one connected routing edit each."""
-        changed_tracks = []
-        for item_uuid in sorted(set(before.items) | set(after.items)):
-            old = before.items.get(item_uuid)
-            new = after.items.get(item_uuid)
-            kind = new.kind if new is not None else old.kind if old is not None else None
-            if kind != "track":
-                continue
-            if old is None or new is None or old.log_value() != new.log_value():
-                changed_tracks.append(item_uuid)
-
-        track_groups = Recorder._connected_track_groups(
-            before,
-            after,
-            changed_tracks,
-        )
-        if len(track_groups) <= 1:
-            return [after]
-
-        track_ids = set(changed_tracks)
-        items = {
-            item_uuid: state
-            for item_uuid, state in after.items.items()
-            if item_uuid not in track_ids
-        }
-        items.update(
-            {
-                item_uuid: state
-                for item_uuid, state in before.items.items()
-                if item_uuid in track_ids
-            }
-        )
-
-        targets = []
-        for group in track_groups:
-            for item_uuid in group:
-                target_state = after.items.get(item_uuid)
-                if target_state is None:
-                    items.pop(item_uuid, None)
-                else:
-                    items[item_uuid] = target_state
-            targets.append(
-                BoardSnapshot.create(
-                    after.board_name,
-                    items,
-                    captured_at=after.captured_at,
-                )
-            )
-        return targets
-
-    @staticmethod
-    def _connected_track_groups(
-        before: BoardSnapshot,
-        after: BoardSnapshot,
-        track_ids: list[str],
-    ) -> list[list[str]]:
-        """Group changed segments that form one logical before/after path.
-
-        KiCad commonly represents a path edit by removing the old segments and
-        adding new UUIDs.  Shared endpoints in either state, including the fixed
-        endpoints that join the old and new paths, identify those changes as one
-        routing action.
+        IPC has no undo notifications. Matching the complete board state lets
+        polling and Stop recognize a return to history without logging an
+        inverse edit or issuing another undo command to KiCad.
         """
-        if not track_ids:
-            return []
-
-        def point(value):
-            if not isinstance(value, dict):
-                return None
-            x = value.get("x_nm", value.get("x"))
-            y = value.get("y_nm", value.get("y"))
-            if x is None or y is None:
-                return None
-            try:
-                return int(x), int(y)
-            except (TypeError, ValueError):
-                return None
-
-        endpoints = {}
-        nets = {}
-        for item_uuid in track_ids:
-            states = (
-                state
-                for state in (before.items.get(item_uuid), after.items.get(item_uuid))
-                if state is not None
-            )
-            item_endpoints = set()
-            item_nets = set()
-            for state in states:
-                for name in ("start", "end"):
-                    if (endpoint := point(state.data.get(name))) is not None:
-                        item_endpoints.add(endpoint)
-                net = state.data.get("net")
-                if isinstance(net, dict) and isinstance(net.get("name"), str):
-                    item_nets.add(net["name"].casefold())
-            endpoints[item_uuid] = item_endpoints
-            nets[item_uuid] = item_nets
-
-        remaining = set(track_ids)
-        groups = []
-        for first in track_ids:
-            if first not in remaining:
-                continue
-            remaining.remove(first)
-            group = [first]
-            pending = [first]
-            while pending:
-                current = pending.pop()
-                connected = [
-                    candidate
-                    for candidate in sorted(remaining)
-                    if nets[current] & nets[candidate]
-                    and endpoints[current] & endpoints[candidate]
-                ]
-                for candidate in connected:
-                    remaining.remove(candidate)
-                    group.append(candidate)
-                    pending.append(candidate)
-            groups.append(sorted(group))
-        return groups
-
-    def _can_coalesce_transform(self, event: dict) -> bool:
-        if not self.history or not self.events:
-            return False
-
-        previous_changes = self.events[-1].get("changes", [])
-        current_changes = event.get("changes", [])
-        if len(previous_changes) != 1 or len(current_changes) != 1:
-            return False
-        previous = previous_changes[0]
-        current = current_changes[0]
-        transform_operations = {
-            "footprint.move",
-        }
-        return (
-            previous.get("operation") in transform_operations
-            and current.get("operation") in transform_operations
-            and previous.get("item_uuid") == current.get("item_uuid")
-        )
+        # Prefer exact fill-state history. Only tolerate fill invalidation when
+        # item membership changed, as when undo removes fanout or created zones.
+        structural_change = self.baseline is not None and set(current.items) != set(self.baseline.items)
+        for ignore_fill in ((False, True) if structural_change else (False,)):
+            for position in range(len(self.history) - 1, -1, -1):
+                if snapshots_match_restored_state(
+                    current, self.history[position], ignore_zone_fill=ignore_fill
+                ):
+                    del self.events[position:]
+                    del self.history[position:]
+                    self.baseline = current
+                    self.pending = None
+                    return True
+        return False
 
     def note(self) -> Path:
         if not self.recording:
@@ -643,8 +438,7 @@ class Recorder:
             raise RecorderError("Click Start before using Undo.")
         if self.preview_position is not None:
             return self.confirm_preview(), "preview"
-        # A user can click undo before the debounce window writes the newest operation.  Flush it
-        # first so the PCB action and the JSON file always refer to the same history entry.
+        # Capture any edit not yet observed by the polling timer before undoing.
         self.flush()
         self.pending = None
         return self._undo_last()
@@ -665,6 +459,11 @@ class Recorder:
         while len(self.history) > target:
             path, strategy = self._undo_last()
             strategies.append(strategy)
+        if len(self.history) < target:
+            raise RecorderError(
+                "KiCad's native Undo crossed the selected recording position. "
+                "Its actual result was kept; recording positions are not native transactions."
+            )
         assert path is not None
         return path, tuple(strategies)
 
@@ -697,10 +496,6 @@ class Recorder:
             raise RecorderError("The PCB no longer matches the selected record preview.")
         assert self.log_path is not None
         remaining_events = self.events[:target]
-        write_json_atomic(
-            self.log_path,
-            self._log_document(snapshot, remaining_events),
-        )
         self.events = remaining_events
         del self.history[target:]
         self.baseline = snapshot
@@ -713,20 +508,19 @@ class Recorder:
         target = self.history[-1]
         restored, strategy = self.adapter.undo_to(target)
         if not snapshots_match_restored_state(restored, target):
-            log_name = self.log_path.name if self.log_path else "the log file"
-            raise RecorderError(f"KiCad could not be restored; {log_name} was left unchanged.")
+            # One native undo may span several observations or stop at a state
+            # missed between polls. Keep its actual result; never force target.
+            if self._rewind_to_recorded_state(restored):
+                assert self.log_path is not None
+                return self.log_path, strategy
+            self._commit(restored)
+            raise RecorderError(
+                "KiCad performed one native Undo, but its result is between recorded "
+                "positions. The actual result was recorded without changing the board. "
+                "IPC recording positions are not native undo transactions."
+            )
         assert self.log_path is not None
         remaining_events = self.events[:-1]
-        try:
-            write_json_atomic(
-                self.log_path,
-                self._log_document(target, remaining_events),
-            )
-        except OSError as exc:
-            self.baseline = restored
-            raise RecorderError(
-                f"The PCB was undone, but {self.log_path.name} could not be updated: {exc}"
-            ) from exc
         self.events = remaining_events
         self.history.pop()
         self.baseline = restored
@@ -740,10 +534,18 @@ class Recorder:
         event = self.flush()
         assert self.log_path is not None
         assert self.baseline is not None
-        write_json_atomic(
-            self.log_path,
-            self._log_document(self.baseline, silkscreen_last=True),
-        )
+        try:
+            writer = write_json_atomic if self.config.overwrite_existing else write_json_new
+            initial = self.history[0] if self.history else self.baseline
+            document = self._finalize_document(
+                self._log_document(self.baseline), self.baseline, initial,
+            )
+            writer(self.log_path, document)
+        except FileExistsError as exc:
+            raise LogFileExistsError(
+                f"{self.log_path.name} appeared during recording; it was not overwritten. "
+                "The recording is still in memory."
+            ) from exc
         self.recording = False
         self.pending = None
         return event

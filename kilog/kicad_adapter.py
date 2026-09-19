@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import os
+import re
 from pathlib import Path
 import time
 
@@ -94,9 +95,9 @@ class KiCadBoardAdapter:
     FANOUT_DEFAULT_VIA_DRILL_MM = 0.3
     FANOUT_VIA_DIAMETER_NM = 500_000
     FANOUT_VIA_DRILL_NM = 300_000
-    FANOUT_MIN_VIA_DRILL_NM = 200_000
-    FANOUT_MIN_TRACK_WIDTH_NM = 300_000
-    FANOUT_MIN_VIA_DIAMETER_NM = 300_000
+    FANOUT_MIN_VIA_DRILL_NM = 100_000
+    FANOUT_MIN_TRACK_WIDTH_NM = 200_000
+    FANOUT_MIN_VIA_DIAMETER_NM = 200_000
     FANOUT_PAD_CLEARANCE_NM = 200_000
     FANOUT_CLEARANCE_TOLERANCE_NM = 1
     FANOUT_VIA_EDGE_CLEARANCE_NM = 500_000
@@ -259,12 +260,9 @@ class KiCadBoardAdapter:
             if not reference.startswith(("L", "T")):
                 continue
 
-            body_bounds = cls._magnetic_body_bounds(footprint)
-            if body_bounds is not None:
-                left, top, right, bottom = body_bounds
-                keepouts.append(
-                    [(left, top), (right, top), (right, bottom), (left, bottom)]
-                )
+            body_loop = cls._magnetic_body_loop(footprint)
+            if body_loop is not None:
+                keepouts.append(body_loop)
                 continue
 
             # Footprints without a usable body outline fall back to the largest
@@ -322,6 +320,78 @@ class KiCadBoardAdapter:
                 [(left, top), (right, top), (right, bottom), (left, bottom)]
             )
         return keepouts
+
+    @staticmethod
+    def _footprint_graphic_segments(footprint, layers):
+        """Read real graphic geometry, including separate line/arc primitives."""
+        items = {}
+        for index, shape in enumerate(footprint.definition.shapes):
+            if shape.layer not in layers:
+                continue
+            data = MessageToDict(shape.proto, preserving_proto_field_name=True,
+                                 always_print_fields_with_no_presence=True)
+            data["layer"] = "BL_Edge_Cuts"
+            key = str(index)
+            items[key] = ItemState(key, "shape", "BoardShape", data)
+        return edge_segments(BoardSnapshot.create("", items))
+
+    @classmethod
+    def _magnetic_body_loop(cls, footprint):
+        """Keep the actual closed silhouette, rather than its bounding rectangle."""
+        from shapely.geometry import LineString, Point, Polygon
+        from shapely.geometry.polygon import orient
+        from shapely.ops import polygonize, unary_union
+
+        center = Point(footprint.position.x, footprint.position.y)
+        for layer in (BoardLayer.BL_F_SilkS, BoardLayer.BL_F_Fab):
+            segments = cls._footprint_graphic_segments(footprint, {layer})
+            lines = [LineString([(round(x), round(y)) for x, y in (a, b)])
+                     for a, b in segments if a != b]
+            candidates = [Polygon(polygon.exterior)
+                          for polygon in polygonize(unary_union(lines))
+                          if Polygon(polygon.exterior).covers(center)]
+            if candidates:
+                body = orient(max(candidates, key=lambda polygon: polygon.area))
+                points = list(body.exterior.coords)[:-1]
+                start = min(range(len(points)), key=lambda index: points[index])
+                return points[start:] + points[:start]
+        return None
+
+    @classmethod
+    def _component_bounds(cls, footprint):
+        """Cover the entire connected component, including non-ground pads."""
+        bounds = [bound for pad in footprint.definition.pads
+                  if (bound := cls._pad_bounds_on_all_copper_layers(pad)) is not None]
+        points = [(footprint.position.x, footprint.position.y)]
+        points.extend((pad.position.x, pad.position.y) for pad in footprint.definition.pads)
+        for a, b in cls._footprint_graphic_segments(footprint, {
+            BoardLayer.BL_F_CrtYd, BoardLayer.BL_B_CrtYd,
+            BoardLayer.BL_F_Fab, BoardLayer.BL_B_Fab,
+            BoardLayer.BL_F_SilkS, BoardLayer.BL_B_SilkS,
+        }):
+            points.extend((a, b))
+        bounds.extend((x, y, x, y) for x, y in points)
+        return (min(b[0] for b in bounds), min(b[1] for b in bounds),
+                max(b[2] for b in bounds), max(b[3] for b in bounds))
+
+    @staticmethod
+    def _is_transformer_or_coupled_inductor(footprint):
+        reference = footprint.reference_field.text.value.strip().upper()
+        if re.fullmatch(r"T\d+", reference):
+            return True
+        description = " ".join((
+            footprint.proto.description_field.text.text.text,
+            footprint.definition.proto.description_field.text.text.text,
+            str(footprint.definition.id),
+        )).casefold()
+        if "transformer" in description or "coupled" in description:
+            return True
+        # Coupled inductors are often designated L rather than T, and IPC may
+        # omit library descriptions. Distinct pad numbers avoid counting duplicate
+        # copper pads of an ordinary two-terminal inductor as separate windings.
+        return bool(re.fullmatch(r"L\d+", reference)) and len({
+            pad.number for pad in footprint.definition.pads if pad.number
+        }) >= 4
 
     @staticmethod
     def _closed_shape_bounds(
@@ -452,6 +522,7 @@ class KiCadBoardAdapter:
         fill_net,
         nets_by_name,
         board_loops,
+        excluded_nets=(),
     ) -> list[Zone]:
         """Create one local zone for each same-net multi-pad group in a footprint."""
         zones: list[Zone] = []
@@ -474,7 +545,7 @@ class KiCadBoardAdapter:
                 grouped: dict[str, list[tuple[float, float, float, float]]] = {}
                 for pad in footprint.definition.pads:
                     net_name = pad.net.name.strip()
-                    if not net_name or net_name.casefold() == fill_name:
+                    if not net_name or net_name.casefold() in {fill_name, *excluded_nets}:
                         continue
                     bounds = cls._pad_bounds_on_layer(pad, layer)
                     if bounds is not None:
@@ -572,15 +643,23 @@ class KiCadBoardAdapter:
         connection.thermal_spokes.width.value_nm = 500_000
         return zone
 
-    def fill_board_copper(self, net_name: str, layer_names: tuple[str, ...]) -> int:
-        """Create one unfilled full-board copper zone on each requested layer."""
-        requested_net = net_name.strip()
-        if not requested_net:
+    def fill_board_copper(self, net_name: str | None, layer_names: tuple[str, ...]) -> int:
+        """Create ground regions, or full-board copper for a single net."""
+        requested_net = net_name.strip() if net_name is not None else None
+        if requested_net == "":
             raise RecorderError("Enter a network name for the copper fill.")
         if not layer_names:
             raise RecorderError("Select at least one copper layer.")
 
         nets = list(self.board.get_nets())
+        if requested_net is None:
+            ground_nets = sorted(
+                (value for value in nets if re.fullmatch(r"GND\d*", value.name, re.I)),
+                key=lambda value: value.name.casefold(),
+            )
+            if not ground_nets:
+                raise RecorderError("GNDfill requires a ground net named GND, GND1, GND2, etc.")
+            requested_net = ground_nets[0].name
         net = next((value for value in nets if value.name == requested_net), None)
         if net is None:
             net = next(
@@ -605,14 +684,97 @@ class KiCadBoardAdapter:
             raise RecorderError("Edge.Cuts does not contain a closed board outline.")
         zone_loops = [*loops, *self._magnetic_keepout_loops(snapshot)]
 
+        ground_nets = [net, *sorted(
+            (value for value in nets if re.fullmatch(r"GND\d*", value.name, re.I)
+             and value.name.casefold() != net.name.casefold()),
+            key=lambda value: value.name.casefold(),
+        )]
+        regions = {net.name.casefold(): [zone_loops]}
+        partitioned = len(ground_nets) > 1
+        if partitioned:
+            from .ground_regions import ground_regions
+
+            ground_names = {value.name.casefold() for value in ground_nets}
+            sites = {}
+            pad_bounds = {}
+            for state in snapshot.items.values():
+                footprint = state.raw_item
+                if not isinstance(footprint, FootprintInstance):
+                    continue
+                component_bounds = self._component_bounds(footprint)
+                is_transformer = self._is_transformer_or_coupled_inductor(footprint)
+                for pad in footprint.definition.pads:
+                    name = pad.net.name.casefold()
+                    point = (pad.position.x, pad.position.y)
+                    if name not in ground_names or not point_inside_board(point, loops):
+                        continue
+                    if point in sites and sites[point] != name:
+                        raise RecorderError("GNDfill cannot partition different ground nets with coincident pads.")
+                    sites[point] = name
+                    bounds = [self._pad_bounds_on_all_copper_layers(pad)]
+                    pad_bounds.setdefault(name, []).extend(
+                        bound for bound in bounds if bound is not None
+                    )
+                    pad_bounds[name].append((*point, *point))
+                    if name != net.name.casefold() and not is_transformer:
+                        pad_bounds[name].append(component_bounds)
+            # Include routing on every layer so both planes enclose the complete
+            # secondary network, even where it extends beyond its components.
+            for state in snapshot.items.values():
+                item = state.raw_item
+                if not isinstance(item, (Track, ArcTrack, Via)):
+                    continue
+                name = item.net.name.casefold()
+                if name not in ground_names or name == net.name.casefold():
+                    continue
+                if isinstance(item, Via):
+                    bound = self._pad_bounds_on_all_copper_layers(item)
+                    if bound is None:
+                        radius = item.diameter / 2
+                        bound = (item.position.x - radius, item.position.y - radius,
+                                 item.position.x + radius, item.position.y + radius)
+                else:
+                    if isinstance(item, ArcTrack):
+                        box = item.bounding_box()
+                        left, top = box.pos.x, box.pos.y
+                        right, bottom = left + box.size.x, top + box.size.y
+                    else:
+                        left, right = sorted((item.start.x, item.end.x))
+                        top, bottom = sorted((item.start.y, item.end.y))
+                    half_width = item.width / 2
+                    bound = (left - half_width, top - half_width,
+                             right + half_width, bottom + half_width)
+                pad_bounds.setdefault(name, []).append(bound)
+            missing = ground_names - {net.name.casefold()} - set(pad_bounds)
+            if missing:
+                raise RecorderError(
+                    "GNDfill needs components, tracks or vias to locate each ground region: "
+                    + ", ".join(sorted(missing))
+                )
+            try:
+                bounds_by_net = {
+                    name: (min(b[0] for b in bounds), min(b[1] for b in bounds),
+                           max(b[2] for b in bounds), max(b[3] for b in bounds))
+                    for name, bounds in pad_bounds.items()
+                }
+                regions = ground_regions(zone_loops, sites, bounds_by_net,
+                                         primary=net.name.casefold())
+            except ImportError as exc:
+                raise RecorderError("Multi-ground GNDfill requires Shapely. Install KiLog requirements and restart.") from exc
+            except ValueError as exc:
+                raise RecorderError(f"GNDfill: {exc}") from exc
+
         zones = []
         for layer in layers:
-            zone = self._new_copper_zone()
-            zone.net = net
-            zone.layers = [layer]
-            zone.name = f"KiLog full-board {net.name} {BoardLayer.Name(layer)}"
-            zone.outline = self._zone_outline(zone_loops)
-            zones.append(zone)
+            for ground_net in ground_nets:
+                for region in regions.get(ground_net.name.casefold(), []):
+                    zone = self._new_copper_zone()
+                    zone.net = ground_net
+                    zone.layers = [layer]
+                    kind = "GNDfill" if partitioned else "full-board"
+                    zone.name = f"KiLog {kind} {ground_net.name} {BoardLayer.Name(layer)}"
+                    zone.outline = self._zone_outline(region)
+                    zones.append(zone)
         zones.extend(
             self._shared_pad_zones(
                 snapshot,
@@ -620,22 +782,30 @@ class KiCadBoardAdapter:
                 net,
                 {value.name.casefold(): value for value in nets},
                 loops,
+                {value.name.casefold() for value in ground_nets},
             )
         )
-        remove_ids = self._zones_replaced_by_fill(
-            snapshot, layers, net, loops[0]
-        )
+        remove_ids = []
+        for ground_net in ground_nets:
+            for item_id in self._zones_replaced_by_fill(snapshot, layers, ground_net, loops[0]):
+                if item_id not in remove_ids:
+                    remove_ids.append(item_id)
 
         commit = self.board.begin_commit()
         try:
             if remove_ids:
                 self.board.remove_items_by_id(remove_ids)
             self.board.create_items(zones)
-            self.board.push_commit(commit, f"KiLog: create board zones for {net.name}")
+            names = ", ".join(value.name for value in ground_nets)
+            self.board.push_commit(commit, f"KiLog: create board zones for {names}")
         except Exception:
             self.board.drop_commit(commit)
             raise
         return len(zones)
+
+    def refill_board_copper(self) -> None:
+        """Calculate copper, waiting for KiCad before the recorder snapshots it."""
+        self.board.refill_zones()
 
     def fanout_net(
         self,
@@ -743,16 +913,28 @@ class KiCadBoardAdapter:
                     track_width,
                     footprint_via,
                 )
+                bend = None
+                if via_position is None:
+                    bent_route = self._find_bent_fanout(
+                        pad, footprint, layer, loops, pad_obstacles, via_obstacles,
+                        existing_tracks, max_search, track_width, footprint_via,
+                    )
+                    if bent_route is not None:
+                        bend, via_position = bent_route
                 if via_position is None:
                     failed_pads.append(self._fanout_pad_label(footprint, pad))
                     continue
 
-                track = Track()
-                track.net = net
-                track.layer = layer
-                track.start = pad.position
-                track.end = via_position
-                track.width = track_width
+                points = [pad.position, via_position] if bend is None else [pad.position, bend, via_position]
+                route_tracks = []
+                for left, right in zip(points, points[1:]):
+                    track = Track()
+                    track.net = net
+                    track.layer = layer
+                    track.start = left
+                    track.end = right
+                    track.width = track_width
+                    route_tracks.append(track)
 
                 via = Via()
                 via.net = net
@@ -760,7 +942,7 @@ class KiCadBoardAdapter:
                 via.diameter = footprint_via
                 via.drill_diameter = footprint_drill
 
-                created.extend((track, via))
+                created.extend((*route_tracks, via))
                 via_obstacles.append(
                     (via_position.x, via_position.y, footprint_via / 2)
                 )
@@ -949,6 +1131,20 @@ class KiCadBoardAdapter:
                     for via in vias
                 ):
                     return True
+        # Follow same-net endpoint connections through a bent fanout.
+        pending = [(pad.position.x, pad.position.y, pad_radius)]
+        remaining = [track for track in tracks if track.net.name.casefold() == pad_net]
+        while pending:
+            x, y, reach = pending.pop()
+            if any(math.hypot(via.position.x - x, via.position.y - y)
+                   <= reach + cls._via_radius(via) for via in vias):
+                return True
+            for track in remaining[:]:
+                for left, right in ((track.start, track.end), (track.end, track.start)):
+                    if math.hypot(left.x - x, left.y - y) <= max(1.0, reach):
+                        remaining.remove(track)
+                        pending.append((right.x, right.y, track.width / 2))
+                        break
         return False
 
     def _find_fanout_position(
@@ -965,6 +1161,10 @@ class KiCadBoardAdapter:
         via_diameter_nm: int,
     ) -> Vector2 | None:
         via_radius = via_diameter_nm / 2
+        start = (pad.position.x, pad.position.y)
+        clearance_nm = self._fanout_start_clearance(
+            pad, layer, track_width_nm, pad_obstacles, via_obstacles, existing_tracks
+        )
         radial_x = pad.position.x - footprint.position.x
         radial_y = pad.position.y - footprint.position.y
         cardinal_directions = ((1, 0), (0, 1), (-1, 0), (0, -1))
@@ -1033,13 +1233,14 @@ class KiCadBoardAdapter:
                 obstacle_pad is not pad
                 and math.hypot(candidate[0] - x, candidate[1] - y)
                 < via_radius + radius + self.FANOUT_PAD_CLEARANCE_NM
-                and self._fanout_via_hits_pad(candidate, via_radius, obstacle_pad)
+                and self._fanout_via_hits_pad(candidate, via_radius, obstacle_pad, clearance_nm)
                 for x, y, radius, obstacle_pad in pad_obstacles
             ):
                 continue
             if any(
                 math.hypot(candidate[0] - x, candidate[1] - y)
-                < via_radius + radius + self.FANOUT_PAD_CLEARANCE_NM
+                <= via_radius + radius or math.hypot(candidate[0] - x, candidate[1] - y)
+                < via_radius + radius + clearance_nm - self.FANOUT_CLEARANCE_TOLERANCE_NM
                 for x, y, radius in via_obstacles
             ):
                 continue
@@ -1052,6 +1253,7 @@ class KiCadBoardAdapter:
                     obstacle[3],
                     layer,
                     track_width_nm,
+                    clearance_nm=clearance_nm,
                 )
                 for obstacle in pad_obstacles
             ):
@@ -1064,24 +1266,89 @@ class KiCadBoardAdapter:
                 track_width_nm,
                 via_radius,
                 existing_tracks,
+                clearance_nm=clearance_nm,
             ):
                 continue
             return Vector2.from_xy(*candidate)
         return None
 
+    def _find_bent_fanout(self, pad, footprint, layer, loops, pads, vias,
+                          tracks, max_search, width, diameter):
+        """Fallback: one cardinal segment followed by a 45-degree segment."""
+        start = (pad.position.x, pad.position.y)
+        gap = self._fanout_start_clearance(pad, layer, width, pads, vias, tracks)
+        radius = diameter / 2
+        radial = (start[0] - footprint.position.x, start[1] - footprint.position.y)
+        directions = sorted(((1, 0), (0, 1), (-1, 0), (0, -1)),
+                            key=lambda d: -(radial[0] * d[0] + radial[1] * d[1]))
+        if footprint.reference_field.text.value.strip().upper().startswith(("L", "T")):
+            outward = max(map(abs, radial))
+            directions = [d for d in directions if outward > 0 and
+                          radial[0] * d[0] + radial[1] * d[1] == outward]
+
+        def trace_clear(left, right):
+            return not any(
+                other is not pad and self._fanout_trace_hits_pad(
+                    left, right, other, layer, width, clearance_nm=gap)
+                for _, _, _, other in pads
+            ) and not self._fanout_hits_other_net_track(
+                left, right, layer, pad.net.name, width, radius, tracks,
+                clearance_nm=gap, check_via=False,
+            ) and not any(
+                point_segment_distance((x, y), left, right) <= width / 2 + r or
+                point_segment_distance((x, y), left, right) <
+                width / 2 + r + gap - self.FANOUT_CLEARANCE_TOLERANCE_NM
+                for x, y, r in vias
+            ) and all(point_inside_board(point, loops) for point in (left, right))
+
+        step = self.FANOUT_SEARCH_STEP_NM
+        # Increasing axial reach keeps the fallback local before exploring farther.
+        for reach in range(self.FANOUT_LENGTH_NM, int(max_search) + 1, step):
+            for dx, dy in directions:
+                first_min = max(step, math.ceil(self._pad_extent_in_direction(pad, dx, dy) / step) * step)
+                for first in range(first_min, reach, step):
+                    bend = (start[0] + first * dx, start[1] + first * dy)
+                    if not trace_clear(start, bend):
+                        continue
+                    diagonal = reach - first
+                    for side in (-1, 1):
+                        end = (bend[0] + diagonal * (dx - side * dy),
+                               bend[1] + diagonal * (dy + side * dx))
+                        if not circle_inside_board(end, radius + self.FANOUT_VIA_EDGE_CLEARANCE_NM, loops):
+                            continue
+                        if any(other is not pad and self._fanout_via_hits_pad(end, radius, other, gap)
+                               for _, _, _, other in pads):
+                            continue
+                        if any(math.hypot(end[0] - x, end[1] - y) <= radius + r or
+                               math.hypot(end[0] - x, end[1] - y) < radius + r + gap - self.FANOUT_CLEARANCE_TOLERANCE_NM
+                               for x, y, r in vias):
+                            continue
+                        if not trace_clear(bend, end):
+                            continue
+                        if self._fanout_hits_other_net_track(
+                            bend, end, layer, pad.net.name, width, radius, tracks, clearance_nm=gap
+                        ):
+                            continue
+                        return Vector2.from_xy(*bend), Vector2.from_xy(*end)
+        return None
+
     @classmethod
-    def _fanout_via_hits_pad(cls, position, radius, pad) -> bool:
+    def _fanout_via_hits_pad(cls, position, radius, pad, clearance_nm=None) -> bool:
         """Check all pad copper envelopes, without inflating rectangles to circles."""
         if any(
-            cls._fanout_trace_hits_pad(position, position, pad, copper.layer, radius * 2)
+            cls._fanout_trace_hits_pad(position, position, pad, copper.layer, radius * 2,
+                                      clearance_nm=clearance_nm)
             for copper in pad.padstack.copper_layers
         ):
             return True
         drill = pad.padstack.drill.diameter
         drill_radius = math.hypot(drill.x, drill.y) / 2
-        return drill_radius > 0 and math.hypot(
-            position[0] - pad.position.x, position[1] - pad.position.y
-        ) < radius + drill_radius + cls.FANOUT_PAD_CLEARANCE_NM
+        gap = cls.FANOUT_PAD_CLEARANCE_NM if clearance_nm is None else clearance_nm
+        distance = math.hypot(position[0] - pad.position.x, position[1] - pad.position.y)
+        return drill_radius > 0 and (
+            distance <= radius + drill_radius or
+            distance < radius + drill_radius + gap - cls.FANOUT_CLEARANCE_TOLERANCE_NM
+        )
 
     @classmethod
     def _fanout_trace_hits_pad(
@@ -1091,6 +1358,7 @@ class KiCadBoardAdapter:
         pad,
         layer,
         track_width_nm: int,
+        clearance_nm=None,
     ) -> bool:
         """Return whether a trace violates clearance to pad copper on its layer.
 
@@ -1099,9 +1367,17 @@ class KiCadBoardAdapter:
         copper shape's local coordinates and measure it against that shape's
         axis-aligned rectangular envelope instead.
         """
+        distance = cls._fanout_pad_distance(start, end, pad, layer)
+        gap = cls.FANOUT_PAD_CLEARANCE_NM if clearance_nm is None else clearance_nm
+        return distance <= track_width_nm / 2 or distance < (
+            track_width_nm / 2 + gap - cls.FANOUT_CLEARANCE_TOLERANCE_NM
+        )
+
+    @classmethod
+    def _fanout_pad_distance(cls, start, end, pad, layer):
         copper = pad.padstack.copper_layer(layer)
         if copper is None or copper.size.x <= 0 or copper.size.y <= 0:
-            return False
+            return math.inf
 
         angle = math.radians(pad.padstack.angle.degrees)
         cosine = math.cos(angle)
@@ -1143,7 +1419,26 @@ class KiCadBoardAdapter:
                 )
                 for edge_start, edge_end in zip(rectangle, rectangle[1:] + rectangle[:1])
             )
-        return distance < track_width_nm / 2 + cls.FANOUT_PAD_CLEARANCE_NM
+        return distance
+
+    @classmethod
+    def _fanout_start_clearance(cls, pad, layer, width, pads, vias, tracks):
+        """Use one starting copper gap for the entire fanout and its via."""
+        start = (pad.position.x, pad.position.y)
+        radius = width / 2
+        gap = cls.FANOUT_PAD_CLEARANCE_NM
+        for _, _, _, obstacle in pads:
+            if obstacle is not pad:
+                gap = min(gap, cls._fanout_pad_distance(start, start, obstacle, layer) - radius)
+        for x, y, other_radius in vias:
+            gap = min(gap, math.hypot(start[0] - x, start[1] - y) - radius - other_radius)
+        for obstacle in tracks:
+            if obstacle.layer != layer or obstacle.net.name.casefold() == pad.net.name.casefold():
+                continue
+            for left, right, margin in cls._track_segments(obstacle):
+                gap = min(gap, point_segment_distance(start, left, right)
+                          - radius - obstacle.width / 2 - margin)
+        return max(0.0, gap)
 
     @staticmethod
     def _segment_distance(start, end, obstacle_start, obstacle_end) -> float:
@@ -1232,6 +1527,8 @@ class KiCadBoardAdapter:
         track_width_nm: int,
         via_radius: float,
         existing_tracks: list[Track | ArcTrack],
+        clearance_nm=None,
+        check_via=True,
     ) -> bool:
         """Reject fanout copper that would touch a trace belonging to another net."""
         requested_net = net_name.casefold()
@@ -1241,25 +1538,23 @@ class KiCadBoardAdapter:
             for obstacle_start, obstacle_end, approximation_margin in cls._track_segments(
                 obstacle
             ):
-                clearance = cls.FANOUT_PAD_CLEARANCE_NM + approximation_margin
+                gap = cls.FANOUT_PAD_CLEARANCE_NM if clearance_nm is None else clearance_nm
+                clearance = gap + approximation_margin
                 obstacle_radius = obstacle.width / 2
                 # The through via intersects every copper layer.
-                if point_segment_distance(candidate, obstacle_start, obstacle_end) < (
+                via_distance = point_segment_distance(candidate, obstacle_start, obstacle_end)
+                if check_via and (via_distance <= via_radius + obstacle_radius + approximation_margin or via_distance < (
                     via_radius
                     + obstacle_radius
                     + clearance
                     - cls.FANOUT_CLEARANCE_TOLERANCE_NM
-                ):
+                )):
                     return True
                 # The fanout trace only conflicts with copper on its own layer.
-                if obstacle.layer == layer and cls._segment_distance(
-                    start, candidate, obstacle_start, obstacle_end
-                ) < (
-                    track_width_nm / 2
-                    + obstacle_radius
-                    + clearance
-                    - cls.FANOUT_CLEARANCE_TOLERANCE_NM
-                ):
+                copper_radius = track_width_nm / 2 + obstacle_radius + approximation_margin
+                distance = cls._segment_distance(start, candidate, obstacle_start, obstacle_end)
+                if obstacle.layer == layer and (distance <= copper_radius or
+                    distance < copper_radius + gap - cls.FANOUT_CLEARANCE_TOLERANCE_NM):
                     return True
         return False
 
@@ -1296,15 +1591,11 @@ class KiCadBoardAdapter:
         raise RecorderError(f"Could not read the PCB state after Undo: {last_error}") from last_error
 
     def undo_to(self, target: BoardSnapshot) -> tuple[BoardSnapshot, str]:
-        """Use KiCad's undo stack first, then exactly restore from memory if needed."""
+        """Perform one native undo; never replace its result with a synthetic edit."""
         response = self.kicad.run_action("common.Interactive.undo")
-        if response.status == RAS_OK:
-            current = self._snapshot_with_retry()
-            if snapshots_match_restored_state(current, target):
-                return current, "native"
-
-        restored = self._restore_exactly(target)
-        return restored, "snapshot"
+        if response.status != RAS_OK:
+            raise RecorderError("KiCad could not run its native Undo action.")
+        return self._snapshot_with_retry(), "native"
 
     def _restore_exactly(
         self,

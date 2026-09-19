@@ -2,13 +2,33 @@
 
 ## Unreleased
 
+- Make the Fill button run and record the actual copper refill after creating
+  zone boundaries, keeping the two operations as separate replay steps.
+
+- Preserve zone filled-state changes as separate refill steps for replay;
+  ignore fill-state drift only as a fallback when matching structural undo.
+
+- Match native undo states despite regenerated footprint field text IDs and
+  derived zone fill state; capture Fill immediately before and after its commit
+  so recording can return to the pre-Fill state without retaining inverse edits.
+
+- Fall back to an orthogonal escape with one 45-degree turn when straight
+  fanout cannot fit; create both segments in one commit and recognize the
+  completed route on subsequent runs.
+
+- Derive one clearance from the minimum starting gap and use it for the entire
+  fanout trace and end via; retain copper-contact and board-edge checks.
+
+- Remove the standalone `skill.py` IPC script and its duplicate test coverage;
+  keep Fill and Fanout available through the plugin UI.
+
 - Keep magnetic L/T fanouts outside the component. Use rectangular pad copper
   envelopes for via clearance, ignore paste-only apertures, and allow a tighter
   gap to the source pad on the same net when the preferred spacing cannot fit.
   Add whole-board obstacle regression coverage for ref_065, including T1.7.
 
 - Clamp fanout trace widths, via diameters, and drill diameters to minimums of
-  0.3 mm, 0.3 mm, and 0.2 mm after scaling, including the portable skill script.
+  0.2 mm, 0.2 mm, and 0.1 mm after scaling.
 
 - Set the default fanout width, via diameter, and drill diameter to 0.4 mm,
   0.5 mm, and 0.3 mm respectively.

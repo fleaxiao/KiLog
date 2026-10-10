@@ -1,0 +1,5324 @@
+{
+  "source": "F:/Boost-Zero/data/test/lm5001_wson8_flyback/ref/ref_065.kicad_pcb",
+  "description": "On-board pads, segments, vias and Edge.Cuts extracted for offline fanout regression; no zones or drawings.",
+  "loops": [
+    [
+      [
+        20500000,
+        55800000
+      ],
+      [
+        79500000,
+        55800000
+      ],
+      [
+        79500000,
+        79175000
+      ],
+      [
+        20500000,
+        79175000
+      ]
+    ]
+  ],
+  "items": [
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-0"
+        },
+        "position": {
+          "x_nm": "44225000",
+          "y_nm": "71515000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "72990000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "70040000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "71515000"
+              },
+              "text": "C2"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "71515000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "71515000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "44225000",
+                "y_nm": "71515000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-1"
+        },
+        "position": {
+          "x_nm": "52850000",
+          "y_nm": "71825000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(U1-FB)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "52025000",
+                "y_nm": "71825000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VOUT"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "53675000",
+                "y_nm": "71825000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "71825000"
+              },
+              "text": "R6"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "71825000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "71825000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "71825000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-2"
+        },
+        "position": {
+          "x_nm": "45750000",
+          "y_nm": "75315000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "44275000",
+                "y_nm": "75315000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VCC"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "47225000",
+                "y_nm": "75315000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45750000",
+                "y_nm": "75315000"
+              },
+              "text": "C3"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45750000",
+                "y_nm": "75315000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45750000",
+                "y_nm": "75315000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45750000",
+                "y_nm": "75315000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-3"
+        },
+        "position": {
+          "x_nm": "53015000",
+          "y_nm": "77375000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VCC"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "1000000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "52065000",
+                "y_nm": "77375000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D2-K)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "1000000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "53965000",
+                "y_nm": "77375000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53015000",
+                "y_nm": "77375000"
+              },
+              "text": "D3"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53015000",
+                "y_nm": "77375000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53015000",
+                "y_nm": "77375000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53015000",
+                "y_nm": "77375000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-4"
+        },
+        "position": {
+          "x_nm": "37125000",
+          "y_nm": "71290000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1600000",
+                      "y_nm": "1600000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "70040000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1600000",
+                      "y_nm": "1600000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "72540000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "71290000"
+              },
+              "text": "C1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "71290000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "71290000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "37125000",
+                "y_nm": "71290000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-5"
+        },
+        "position": {
+          "x_nm": "45600000",
+          "y_nm": "77725000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VCC"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "1200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "47250000",
+                "y_nm": "77725000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D1-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "1200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "43950000",
+                "y_nm": "77725000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45600000",
+                "y_nm": "77725000"
+              },
+              "text": "D1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45600000",
+                "y_nm": "77725000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45600000",
+                "y_nm": "77725000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45600000",
+                "y_nm": "77725000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-6"
+        },
+        "position": {
+          "x_nm": "25000000",
+          "y_nm": "67695000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1100000",
+                      "y_nm": "1100000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -270.0
+                }
+              },
+              "position": {
+                "x_nm": "22460000",
+                "y_nm": "66425000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1100000",
+                      "y_nm": "1100000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -270.0
+                }
+              },
+              "position": {
+                "x_nm": "22460000",
+                "y_nm": "68965000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "2200000",
+                      "y_nm": "2200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -270.0
+                }
+              },
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "66425000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "2200000",
+                      "y_nm": "2200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -270.0
+                }
+              },
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "68965000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "67695000"
+              },
+              "text": "J1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "67695000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "67695000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "25000000",
+                "y_nm": "67695000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-7"
+        },
+        "position": {
+          "x_nm": "55675000",
+          "y_nm": "61415000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "59940000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VOUT"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "62890000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "61415000"
+              },
+              "text": "C7"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "61415000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "61415000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55675000",
+                "y_nm": "61415000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-8"
+        },
+        "position": {
+          "x_nm": "49700000",
+          "y_nm": "74940000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "50525000",
+                "y_nm": "74940000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(U1-RT)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "48875000",
+                "y_nm": "74940000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "49700000",
+                "y_nm": "74940000"
+              },
+              "text": "R3"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "49700000",
+                "y_nm": "74940000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "49700000",
+                "y_nm": "74940000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "49700000",
+                "y_nm": "74940000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-9"
+        },
+        "position": {
+          "x_nm": "66325000",
+          "y_nm": "67950000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VOUT"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1600000",
+                      "y_nm": "1600000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "69200000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1600000",
+                      "y_nm": "1600000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "66700000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "67950000"
+              },
+              "text": "C8"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "67950000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "67950000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "66325000",
+                "y_nm": "67950000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-10"
+        },
+        "position": {
+          "x_nm": "55250000",
+          "y_nm": "69225000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(U1-FB)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "70050000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(C5-Pad1)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "68400000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "69225000"
+              },
+              "text": "R4"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "69225000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "69225000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "55250000",
+                "y_nm": "69225000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-11"
+        },
+        "position": {
+          "x_nm": "52875000",
+          "y_nm": "73575000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "53700000",
+                "y_nm": "73575000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(U1-FB)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "52050000",
+                "y_nm": "73575000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52875000",
+                "y_nm": "73575000"
+              },
+              "text": "R7"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52875000",
+                "y_nm": "73575000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52875000",
+                "y_nm": "73575000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52875000",
+                "y_nm": "73575000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-12"
+        },
+        "position": {
+          "x_nm": "52750000",
+          "y_nm": "61190000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VOUT"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "1200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "62840000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D4-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "1200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "59540000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "61190000"
+              },
+              "text": "D4"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "61190000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "61190000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52750000",
+                "y_nm": "61190000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-13"
+        },
+        "position": {
+          "x_nm": "52850000",
+          "y_nm": "75450000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(D2-K)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "53675000",
+                "y_nm": "75450000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VCC"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "52025000",
+                "y_nm": "75450000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "75450000"
+              },
+              "text": "R5"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "75450000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "75450000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "75450000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-14"
+        },
+        "position": {
+          "x_nm": "57525000",
+          "y_nm": "77325000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "59000000",
+                "y_nm": "77325000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D2-K)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1150000",
+                      "y_nm": "1800000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "77325000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "57525000",
+                "y_nm": "77325000"
+              },
+              "text": "C4"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "57525000",
+                "y_nm": "77325000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "57525000",
+                "y_nm": "77325000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "57525000",
+                "y_nm": "77325000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-15"
+        },
+        "position": {
+          "x_nm": "74960000",
+          "y_nm": "67945000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1100000",
+                      "y_nm": "1100000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "77500000",
+                "y_nm": "69215000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1100000",
+                      "y_nm": "1100000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "77500000",
+                "y_nm": "66675000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "/VOUT"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "2200000",
+                      "y_nm": "2200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "69215000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_PTH",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "2200000",
+                      "y_nm": "2200000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "66675000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "67945000"
+              },
+              "text": "J2"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "67945000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "67945000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "74960000",
+                "y_nm": "67945000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-16"
+        },
+        "position": {
+          "x_nm": "52100000",
+          "y_nm": "65825000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(U1-EN)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "66650000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "65000000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "65825000"
+              },
+              "text": "R1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "65825000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "65825000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52100000",
+                "y_nm": "65825000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-17"
+        },
+        "position": {
+          "x_nm": "56050000",
+          "y_nm": "74350000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(D2-K)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "1000000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "75300000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D2-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "1000000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -90.0
+                }
+              },
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "73400000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "74350000"
+              },
+              "text": "D2"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "74350000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "74350000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "56050000",
+                "y_nm": "74350000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-18"
+        },
+        "position": {
+          "x_nm": "48450000",
+          "y_nm": "71690000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "890000",
+                      "y_nm": "1210000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "47700001",
+                "y_nm": "71140000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "890000",
+                      "y_nm": "1210000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "49200000",
+                "y_nm": "71140001"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "890000",
+                      "y_nm": "1210000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "47700000",
+                "y_nm": "72239999"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "890000",
+                      "y_nm": "1210000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "49199999",
+                "y_nm": "72240000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(D2-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "49650000",
+                "y_nm": "70040001"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(U1-EN)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "48850000",
+                "y_nm": "70040000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "3",
+              "net": {
+                "name": "Net-(U1-SW)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "48050001",
+                "y_nm": "70040000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "4",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "47250001",
+                "y_nm": "70040000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "5",
+              "net": {
+                "name": "/VCC"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "47250000",
+                "y_nm": "73339999"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "6",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "48050000",
+                "y_nm": "73340000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "7",
+              "net": {
+                "name": "Net-(U1-RT)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "48849999",
+                "y_nm": "73340000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "8",
+              "net": {
+                "name": "Net-(U1-FB)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "650000",
+                      "y_nm": "400000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "49649999",
+                "y_nm": "73340000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "9",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "2200000",
+                      "y_nm": "3000000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "48450000",
+                "y_nm": "71690000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "48450000",
+                "y_nm": "71690000"
+              },
+              "text": "U1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "48450000",
+                "y_nm": "71690000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "48450000",
+                "y_nm": "71690000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "48450000",
+                "y_nm": "71690000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-19"
+        },
+        "position": {
+          "x_nm": "53800000",
+          "y_nm": "65800000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "64975000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(U1-EN)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "800000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": 90.0
+                }
+              },
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "66625000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "65800000"
+              },
+              "text": "R2"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "65800000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "65800000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "53800000",
+                "y_nm": "65800000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-20"
+        },
+        "position": {
+          "x_nm": "52850000",
+          "y_nm": "70050000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(U1-FB)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "53625000",
+                "y_nm": "70050000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D2-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "52075000",
+                "y_nm": "70050000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "70050000"
+              },
+              "text": "C6"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "70050000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "70050000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "70050000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-21"
+        },
+        "position": {
+          "x_nm": "52850000",
+          "y_nm": "68300000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {
+                "name": "Net-(C5-Pad1)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "53625000",
+                "y_nm": "68300000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D2-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "900000",
+                      "y_nm": "950000"
+                    }
+                  }
+                ],
+                "angle": {
+                  "value_degrees": -180.0
+                }
+              },
+              "position": {
+                "x_nm": "52075000",
+                "y_nm": "68300000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "68300000"
+              },
+              "text": "C5"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "68300000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "68300000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "52850000",
+                "y_nm": "68300000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "FootprintInstance",
+      "data": {
+        "id": {
+          "value": "fixture-22"
+        },
+        "position": {
+          "x_nm": "45900000",
+          "y_nm": "63565000"
+        },
+        "layer": "BL_F_Cu",
+        "definition": {
+          "items": [
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "1",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "42150000",
+                "y_nm": "59500000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "2",
+              "net": {
+                "name": "Net-(D4-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "44650000",
+                "y_nm": "59500000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "3",
+              "net": {},
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "47150000",
+                "y_nm": "59500000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "4",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "49650000",
+                "y_nm": "59500000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "5",
+              "net": {
+                "name": "Net-(U1-SW)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "49650000",
+                "y_nm": "67630000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "6",
+              "net": {
+                "name": "/VIN"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "47150000",
+                "y_nm": "67630000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "7",
+              "net": {
+                "name": "GND"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "44650000",
+                "y_nm": "67630000"
+              }
+            },
+            {
+              "@type": "type.googleapis.com/kiapi.board.types.Pad",
+              "number": "8",
+              "net": {
+                "name": "Net-(D1-A)"
+              },
+              "type": "PT_SMD",
+              "pad_stack": {
+                "type": "PST_NORMAL",
+                "layers": [
+                  "BL_F_Cu",
+                  "BL_F_Mask",
+                  "BL_F_Paste"
+                ],
+                "copper_layers": [
+                  {
+                    "layer": "BL_F_Cu",
+                    "size": {
+                      "x_nm": "1170000",
+                      "y_nm": "1910000"
+                    }
+                  }
+                ],
+                "angle": {}
+              },
+              "position": {
+                "x_nm": "42150000",
+                "y_nm": "67630000"
+              }
+            }
+          ]
+        },
+        "reference_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45900000",
+                "y_nm": "63565000"
+              },
+              "text": "T1"
+            }
+          }
+        },
+        "value_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45900000",
+                "y_nm": "63565000"
+              }
+            }
+          }
+        },
+        "datasheet_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45900000",
+                "y_nm": "63565000"
+              }
+            }
+          }
+        },
+        "description_field": {
+          "text": {
+            "text": {
+              "position": {
+                "x_nm": "45900000",
+                "y_nm": "63565000"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-23"
+        },
+        "start": {
+          "x_nm": "52100000",
+          "y_nm": "65000000"
+        },
+        "end": {
+          "x_nm": "48450000",
+          "y_nm": "65000000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-24"
+        },
+        "start": {
+          "x_nm": "44225000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "47250000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-25"
+        },
+        "start": {
+          "x_nm": "47250000",
+          "y_nm": "67730000"
+        },
+        "end": {
+          "x_nm": "47150000",
+          "y_nm": "67630000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-26"
+        },
+        "start": {
+          "x_nm": "30375000",
+          "y_nm": "66425000"
+        },
+        "end": {
+          "x_nm": "33990000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-27"
+        },
+        "start": {
+          "x_nm": "47150000",
+          "y_nm": "66300000"
+        },
+        "end": {
+          "x_nm": "47150000",
+          "y_nm": "67630000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-28"
+        },
+        "start": {
+          "x_nm": "47250000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "47250000",
+          "y_nm": "67730000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-29"
+        },
+        "start": {
+          "x_nm": "48450000",
+          "y_nm": "65000000"
+        },
+        "end": {
+          "x_nm": "47150000",
+          "y_nm": "66300000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-30"
+        },
+        "start": {
+          "x_nm": "33990000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "37125000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-31"
+        },
+        "start": {
+          "x_nm": "37125000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "44225000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-32"
+        },
+        "start": {
+          "x_nm": "25000000",
+          "y_nm": "66425000"
+        },
+        "end": {
+          "x_nm": "30375000",
+          "y_nm": "66425000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VIN"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-33"
+        },
+        "start": {
+          "x_nm": "52050000",
+          "y_nm": "73575000"
+        },
+        "end": {
+          "x_nm": "50750000",
+          "y_nm": "73575000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-34"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "71200000"
+        },
+        "end": {
+          "x_nm": "52300000",
+          "y_nm": "70925000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-35"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "73550000"
+        },
+        "end": {
+          "x_nm": "52050000",
+          "y_nm": "73575000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-36"
+        },
+        "start": {
+          "x_nm": "53625000",
+          "y_nm": "70050000"
+        },
+        "end": {
+          "x_nm": "55250000",
+          "y_nm": "70050000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-37"
+        },
+        "start": {
+          "x_nm": "52300000",
+          "y_nm": "70925000"
+        },
+        "end": {
+          "x_nm": "53425000",
+          "y_nm": "70925000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-38"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "71825000"
+        },
+        "end": {
+          "x_nm": "52025000",
+          "y_nm": "73550000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-39"
+        },
+        "start": {
+          "x_nm": "53425000",
+          "y_nm": "70925000"
+        },
+        "end": {
+          "x_nm": "53625000",
+          "y_nm": "70725000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-40"
+        },
+        "start": {
+          "x_nm": "49660000",
+          "y_nm": "73350000"
+        },
+        "end": {
+          "x_nm": "49650000",
+          "y_nm": "73340000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-41"
+        },
+        "start": {
+          "x_nm": "50525000",
+          "y_nm": "73350000"
+        },
+        "end": {
+          "x_nm": "49660000",
+          "y_nm": "73350000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-42"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "71825000"
+        },
+        "end": {
+          "x_nm": "52025000",
+          "y_nm": "71200000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-43"
+        },
+        "start": {
+          "x_nm": "50750000",
+          "y_nm": "73575000"
+        },
+        "end": {
+          "x_nm": "50525000",
+          "y_nm": "73350000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-44"
+        },
+        "start": {
+          "x_nm": "53625000",
+          "y_nm": "70725000"
+        },
+        "end": {
+          "x_nm": "53625000",
+          "y_nm": "70050000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-FB)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-45"
+        },
+        "start": {
+          "x_nm": "74960000",
+          "y_nm": "69215000"
+        },
+        "end": {
+          "x_nm": "74960000",
+          "y_nm": "71315000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-46"
+        },
+        "start": {
+          "x_nm": "58465000",
+          "y_nm": "62890000"
+        },
+        "end": {
+          "x_nm": "64775000",
+          "y_nm": "69200000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-47"
+        },
+        "start": {
+          "x_nm": "55675000",
+          "y_nm": "62890000"
+        },
+        "end": {
+          "x_nm": "58465000",
+          "y_nm": "62890000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-48"
+        },
+        "start": {
+          "x_nm": "74960000",
+          "y_nm": "71315000"
+        },
+        "end": {
+          "x_nm": "74450000",
+          "y_nm": "71825000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-49"
+        },
+        "start": {
+          "x_nm": "74945000",
+          "y_nm": "69200000"
+        },
+        "end": {
+          "x_nm": "74960000",
+          "y_nm": "69215000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-50"
+        },
+        "start": {
+          "x_nm": "64775000",
+          "y_nm": "69200000"
+        },
+        "end": {
+          "x_nm": "66325000",
+          "y_nm": "69200000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-51"
+        },
+        "start": {
+          "x_nm": "55625000",
+          "y_nm": "62840000"
+        },
+        "end": {
+          "x_nm": "55675000",
+          "y_nm": "62890000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-52"
+        },
+        "start": {
+          "x_nm": "74450000",
+          "y_nm": "71825000"
+        },
+        "end": {
+          "x_nm": "53675000",
+          "y_nm": "71825000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-53"
+        },
+        "start": {
+          "x_nm": "66325000",
+          "y_nm": "69200000"
+        },
+        "end": {
+          "x_nm": "74945000",
+          "y_nm": "69200000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-54"
+        },
+        "start": {
+          "x_nm": "52750000",
+          "y_nm": "62840000"
+        },
+        "end": {
+          "x_nm": "55625000",
+          "y_nm": "62840000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VOUT"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-55"
+        },
+        "start": {
+          "x_nm": "47600000",
+          "y_nm": "77375000"
+        },
+        "end": {
+          "x_nm": "47250000",
+          "y_nm": "77725000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-56"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "77335000"
+        },
+        "end": {
+          "x_nm": "52065000",
+          "y_nm": "77375000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-57"
+        },
+        "start": {
+          "x_nm": "52025000",
+          "y_nm": "75450000"
+        },
+        "end": {
+          "x_nm": "52025000",
+          "y_nm": "77335000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-58"
+        },
+        "start": {
+          "x_nm": "47250000",
+          "y_nm": "75340000"
+        },
+        "end": {
+          "x_nm": "47225000",
+          "y_nm": "75315000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-59"
+        },
+        "start": {
+          "x_nm": "52065000",
+          "y_nm": "77375000"
+        },
+        "end": {
+          "x_nm": "47600000",
+          "y_nm": "77375000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-60"
+        },
+        "start": {
+          "x_nm": "47250000",
+          "y_nm": "77725000"
+        },
+        "end": {
+          "x_nm": "47250000",
+          "y_nm": "73340000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-61"
+        },
+        "start": {
+          "x_nm": "47250000",
+          "y_nm": "77725000"
+        },
+        "end": {
+          "x_nm": "47250000",
+          "y_nm": "75340000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "/VCC"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-62"
+        },
+        "start": {
+          "x_nm": "53965000",
+          "y_nm": "76465000"
+        },
+        "end": {
+          "x_nm": "53675000",
+          "y_nm": "76175000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-63"
+        },
+        "start": {
+          "x_nm": "53965000",
+          "y_nm": "77375000"
+        },
+        "end": {
+          "x_nm": "56000000",
+          "y_nm": "77375000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-64"
+        },
+        "start": {
+          "x_nm": "56000000",
+          "y_nm": "77375000"
+        },
+        "end": {
+          "x_nm": "56050000",
+          "y_nm": "77325000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-65"
+        },
+        "start": {
+          "x_nm": "53675000",
+          "y_nm": "76175000"
+        },
+        "end": {
+          "x_nm": "53675000",
+          "y_nm": "75450000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-66"
+        },
+        "start": {
+          "x_nm": "56050000",
+          "y_nm": "77325000"
+        },
+        "end": {
+          "x_nm": "56050000",
+          "y_nm": "75300000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-67"
+        },
+        "start": {
+          "x_nm": "53965000",
+          "y_nm": "77375000"
+        },
+        "end": {
+          "x_nm": "53965000",
+          "y_nm": "76465000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-K)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-68"
+        },
+        "start": {
+          "x_nm": "42150000",
+          "y_nm": "69150000"
+        },
+        "end": {
+          "x_nm": "42150000",
+          "y_nm": "67630000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D1-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-69"
+        },
+        "start": {
+          "x_nm": "43950000",
+          "y_nm": "77725000"
+        },
+        "end": {
+          "x_nm": "43000000",
+          "y_nm": "77725000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D1-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-70"
+        },
+        "start": {
+          "x_nm": "42150000",
+          "y_nm": "76875000"
+        },
+        "end": {
+          "x_nm": "42150000",
+          "y_nm": "69150000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_B_Cu",
+        "net": {
+          "name": "Net-(D1-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-71"
+        },
+        "start": {
+          "x_nm": "43000000",
+          "y_nm": "77725000"
+        },
+        "end": {
+          "x_nm": "42150000",
+          "y_nm": "76875000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_B_Cu",
+        "net": {
+          "name": "Net-(D1-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-72"
+        },
+        "start": {
+          "x_nm": "48850000",
+          "y_nm": "73340000"
+        },
+        "end": {
+          "x_nm": "48850000",
+          "y_nm": "74915000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-RT)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-73"
+        },
+        "start": {
+          "x_nm": "48850000",
+          "y_nm": "74915000"
+        },
+        "end": {
+          "x_nm": "48875000",
+          "y_nm": "74940000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-RT)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-74"
+        },
+        "start": {
+          "x_nm": "55250000",
+          "y_nm": "68400000"
+        },
+        "end": {
+          "x_nm": "53725000",
+          "y_nm": "68400000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(C5-Pad1)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-75"
+        },
+        "start": {
+          "x_nm": "53725000",
+          "y_nm": "68400000"
+        },
+        "end": {
+          "x_nm": "53625000",
+          "y_nm": "68300000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(C5-Pad1)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-76"
+        },
+        "start": {
+          "x_nm": "45200000",
+          "y_nm": "57600000"
+        },
+        "end": {
+          "x_nm": "44650000",
+          "y_nm": "58150000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D4-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-77"
+        },
+        "start": {
+          "x_nm": "51825000",
+          "y_nm": "57600000"
+        },
+        "end": {
+          "x_nm": "45200000",
+          "y_nm": "57600000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D4-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-78"
+        },
+        "start": {
+          "x_nm": "44650000",
+          "y_nm": "58150000"
+        },
+        "end": {
+          "x_nm": "44650000",
+          "y_nm": "59500000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D4-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-79"
+        },
+        "start": {
+          "x_nm": "52750000",
+          "y_nm": "58525000"
+        },
+        "end": {
+          "x_nm": "51825000",
+          "y_nm": "57600000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D4-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-80"
+        },
+        "start": {
+          "x_nm": "52750000",
+          "y_nm": "59540000"
+        },
+        "end": {
+          "x_nm": "52750000",
+          "y_nm": "58525000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D4-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-81"
+        },
+        "start": {
+          "x_nm": "49225000",
+          "y_nm": "69100000"
+        },
+        "end": {
+          "x_nm": "48850000",
+          "y_nm": "69475000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-82"
+        },
+        "start": {
+          "x_nm": "52100000",
+          "y_nm": "66650000"
+        },
+        "end": {
+          "x_nm": "51450000",
+          "y_nm": "66650000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-83"
+        },
+        "start": {
+          "x_nm": "53800000",
+          "y_nm": "66625000"
+        },
+        "end": {
+          "x_nm": "52125000",
+          "y_nm": "66625000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-84"
+        },
+        "start": {
+          "x_nm": "50625000",
+          "y_nm": "69100000"
+        },
+        "end": {
+          "x_nm": "49225000",
+          "y_nm": "69100000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-85"
+        },
+        "start": {
+          "x_nm": "52125000",
+          "y_nm": "66625000"
+        },
+        "end": {
+          "x_nm": "52100000",
+          "y_nm": "66650000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-86"
+        },
+        "start": {
+          "x_nm": "51100000",
+          "y_nm": "68625000"
+        },
+        "end": {
+          "x_nm": "50625000",
+          "y_nm": "69100000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-87"
+        },
+        "start": {
+          "x_nm": "51450000",
+          "y_nm": "66650000"
+        },
+        "end": {
+          "x_nm": "51100000",
+          "y_nm": "67000000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-88"
+        },
+        "start": {
+          "x_nm": "48850000",
+          "y_nm": "69475000"
+        },
+        "end": {
+          "x_nm": "48850000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-89"
+        },
+        "start": {
+          "x_nm": "51100000",
+          "y_nm": "67000000"
+        },
+        "end": {
+          "x_nm": "51100000",
+          "y_nm": "68625000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-EN)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-90"
+        },
+        "start": {
+          "x_nm": "56050000",
+          "y_nm": "73400000"
+        },
+        "end": {
+          "x_nm": "56050000",
+          "y_nm": "72525000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-91"
+        },
+        "start": {
+          "x_nm": "49650000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "50325000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-92"
+        },
+        "start": {
+          "x_nm": "50325000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "52065000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-93"
+        },
+        "start": {
+          "x_nm": "52075000",
+          "y_nm": "70050000"
+        },
+        "end": {
+          "x_nm": "52075000",
+          "y_nm": "68300000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-94"
+        },
+        "start": {
+          "x_nm": "52065000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "52075000",
+          "y_nm": "70050000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-95"
+        },
+        "start": {
+          "x_nm": "56050000",
+          "y_nm": "72525000"
+        },
+        "end": {
+          "x_nm": "52810000",
+          "y_nm": "72525000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_B_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-96"
+        },
+        "start": {
+          "x_nm": "52810000",
+          "y_nm": "72525000"
+        },
+        "end": {
+          "x_nm": "50325000",
+          "y_nm": "70040000"
+        },
+        "width": {
+          "value_nm": "200000"
+        },
+        "layer": "BL_B_Cu",
+        "net": {
+          "name": "Net-(D2-A)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-97"
+        },
+        "start": {
+          "x_nm": "48050000",
+          "y_nm": "70040000"
+        },
+        "end": {
+          "x_nm": "48050000",
+          "y_nm": "69375000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-SW)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-98"
+        },
+        "start": {
+          "x_nm": "48400000",
+          "y_nm": "68025000"
+        },
+        "end": {
+          "x_nm": "48795000",
+          "y_nm": "67630000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-SW)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-99"
+        },
+        "start": {
+          "x_nm": "48795000",
+          "y_nm": "67630000"
+        },
+        "end": {
+          "x_nm": "49650000",
+          "y_nm": "67630000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-SW)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-100"
+        },
+        "start": {
+          "x_nm": "48400000",
+          "y_nm": "69025000"
+        },
+        "end": {
+          "x_nm": "48400000",
+          "y_nm": "68025000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-SW)"
+        }
+      }
+    },
+    {
+      "type": "Track",
+      "data": {
+        "id": {
+          "value": "fixture-101"
+        },
+        "start": {
+          "x_nm": "48050000",
+          "y_nm": "69375000"
+        },
+        "end": {
+          "x_nm": "48400000",
+          "y_nm": "69025000"
+        },
+        "width": {
+          "value_nm": "400000"
+        },
+        "layer": "BL_F_Cu",
+        "net": {
+          "name": "Net-(U1-SW)"
+        }
+      }
+    },
+    {
+      "type": "Via",
+      "data": {
+        "id": {
+          "value": "fixture-102"
+        },
+        "position": {
+          "x_nm": "43000000",
+          "y_nm": "77725000"
+        },
+        "pad_stack": {
+          "type": "PST_NORMAL",
+          "drill": {
+            "start_layer": "BL_F_Cu",
+            "end_layer": "BL_B_Cu"
+          },
+          "copper_layers": [
+            {
+              "layer": "BL_F_Cu",
+              "size": {
+                "x_nm": "500000",
+                "y_nm": "500000"
+              }
+            }
+          ]
+        },
+        "net": {
+          "name": "Net-(D1-A)"
+        },
+        "type": "VT_THROUGH"
+      }
+    },
+    {
+      "type": "Via",
+      "data": {
+        "id": {
+          "value": "fixture-103"
+        },
+        "position": {
+          "x_nm": "42150000",
+          "y_nm": "69150000"
+        },
+        "pad_stack": {
+          "type": "PST_NORMAL",
+          "drill": {
+            "start_layer": "BL_F_Cu",
+            "end_layer": "BL_B_Cu"
+          },
+          "copper_layers": [
+            {
+              "layer": "BL_F_Cu",
+              "size": {
+                "x_nm": "500000",
+                "y_nm": "500000"
+              }
+            }
+          ]
+        },
+        "net": {
+          "name": "Net-(D1-A)"
+        },
+        "type": "VT_THROUGH"
+      }
+    },
+    {
+      "type": "Via",
+      "data": {
+        "id": {
+          "value": "fixture-104"
+        },
+        "position": {
+          "x_nm": "56050000",
+          "y_nm": "72525000"
+        },
+        "pad_stack": {
+          "type": "PST_NORMAL",
+          "drill": {
+            "start_layer": "BL_F_Cu",
+            "end_layer": "BL_B_Cu"
+          },
+          "copper_layers": [
+            {
+              "layer": "BL_F_Cu",
+              "size": {
+                "x_nm": "500000",
+                "y_nm": "500000"
+              }
+            }
+          ]
+        },
+        "net": {
+          "name": "Net-(D2-A)"
+        },
+        "type": "VT_THROUGH"
+      }
+    },
+    {
+      "type": "Via",
+      "data": {
+        "id": {
+          "value": "fixture-105"
+        },
+        "position": {
+          "x_nm": "50325000",
+          "y_nm": "70040000"
+        },
+        "pad_stack": {
+          "type": "PST_NORMAL",
+          "drill": {
+            "start_layer": "BL_F_Cu",
+            "end_layer": "BL_B_Cu"
+          },
+          "copper_layers": [
+            {
+              "layer": "BL_F_Cu",
+              "size": {
+                "x_nm": "500000",
+                "y_nm": "500000"
+              }
+            }
+          ]
+        },
+        "net": {
+          "name": "Net-(D2-A)"
+        },
+        "type": "VT_THROUGH"
+      }
+    }
+  ]
+}

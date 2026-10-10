@@ -1,0 +1,322 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import time
+from typing import Any, Protocol
+from uuid import UUID
+
+from .model import BoardSnapshot
+from .storage import snapshot_path
+
+
+class ReplayError(RuntimeError):
+    pass
+
+
+class ReplayAdapter(Protocol):
+    def prepare_replay(self, initial_pcb_path: str) -> BoardSnapshot: ...
+
+    def restore_snapshot(self, target: BoardSnapshot, description: str = "") -> BoardSnapshot: ...
+
+    def apply_step(
+        self,
+        changes: tuple[dict[str, Any], ...],
+        description: str = "",
+    ) -> BoardSnapshot: ...
+
+    def save_copy(self, path: Path) -> None: ...
+
+
+@dataclass(frozen=True)
+class ReplayLog:
+    path: Path
+    initial_pcb_path: str
+    changes: tuple[dict[str, Any], ...]
+    steps: tuple[tuple[dict[str, Any], ...], ...]
+    source_steps: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ReplayBranch:
+    """The replay prefix and board states needed to continue it as a recording."""
+
+    path: Path
+    initial_pcb_path: str
+    steps: tuple[dict[str, Any], ...]
+    snapshots: tuple[BoardSnapshot, ...]
+
+
+def load_replay_log(path: Path) -> ReplayLog:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ReplayError(f"Could not read {path.name}: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ReplayError("The log root must be a JSON object.")
+    initial_path = document.get("initial_pcb_path")
+    raw_steps = document.get("steps")
+    if not isinstance(initial_path, str) or not initial_path.strip():
+        raise ReplayError("The log has no valid initial_pcb_path.")
+    if not isinstance(raw_steps, list):
+        raise ReplayError("The log has no valid steps array.")
+
+    grouped_changes: list[list[dict[str, Any]]] = []
+    changes: list[Any] = []
+    seen_step_uuids: set[UUID] = set()
+    for step_index, step in enumerate(raw_steps, 1):
+        if not isinstance(step, dict):
+            raise ReplayError(f"Step #{step_index} must be a JSON object.")
+        if step.get("step") != step_index:
+            raise ReplayError(
+                f"Step #{step_index} must have step {step_index}."
+            )
+        step_uuid = step.get("step_uuid")
+        try:
+            parsed_step_uuid = UUID(step_uuid)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ReplayError(f"Step #{step_index} has no valid step_uuid.") from exc
+        if parsed_step_uuid in seen_step_uuids:
+            raise ReplayError(f"Step #{step_index} has a duplicate step_uuid.")
+        seen_step_uuids.add(parsed_step_uuid)
+        step_changes = step.get("changes")
+        if not isinstance(step_changes, list) or not step_changes:
+            raise ReplayError(f"Step #{step_index} has no valid changes array.")
+        grouped_changes.append(step_changes)
+        changes.extend(step_changes)
+    validated: list[dict[str, Any]] = []
+    for index, change in enumerate(changes, 1):
+        if not isinstance(change, dict):
+            raise ReplayError(f"Change #{index} must be a JSON object.")
+        if "item_uuid" in change:
+            raise ReplayError(f"Change #{index} uses obsolete item_uuid.")
+        if "change_uuid" in change:
+            raise ReplayError(f"Change #{index} uses obsolete change_uuid.")
+        if not isinstance(change.get("operation"), str) or not change["operation"]:
+            raise ReplayError(f"Change #{index} has no operation.")
+        if "before" in change or "after" in change:
+            raise ReplayError(
+                f"Change #{index} uses obsolete before/after fields."
+            )
+        item = change.get("item")
+        data = item.get("data") if isinstance(item, dict) else None
+        native_id = data.get("id") if isinstance(data, dict) else None
+        nested_id = native_id.get("value") if isinstance(native_id, dict) else None
+        explicit_id = change.get("id")
+        item_uuid = nested_id if isinstance(nested_id, str) and nested_id else explicit_id
+        if not isinstance(item_uuid, str) or not item_uuid:
+            raise ReplayError(f"Change #{index} has no valid object ID.")
+        if explicit_id is not None and explicit_id != item_uuid:
+            raise ReplayError(f"Change #{index} contains conflicting object IDs.")
+        normalized = dict(change)
+        normalized["item_uuid"] = item_uuid
+        validated.append(normalized)
+    steps: list[list[dict[str, Any]]] = []
+    offset = 0
+    for group in grouped_changes:
+        steps.append(validated[offset : offset + len(group)])
+        offset += len(group)
+    return ReplayLog(
+        path.resolve(),
+        initial_path,
+        tuple(validated),
+        tuple(tuple(step) for step in steps),
+        tuple(raw_steps),
+    )
+
+
+class ReplayController:
+    """Deterministic fixed-step playback over a KiLog JSON document."""
+
+    def __init__(self, adapter: ReplayAdapter, step_seconds: float = 0.4):
+        self.adapter = adapter
+        self.step_seconds = step_seconds
+        self.log: ReplayLog | None = None
+        self.baseline: BoardSnapshot | None = None
+        self._position_snapshots: list[BoardSnapshot] = []
+        self.position = 0
+        self.playing = False
+        self.speed = 1.0
+        self._next_step_at: float | None = None
+
+    @property
+    def total(self) -> int:
+        return len(self.log.steps) if self.log else 0
+
+    def load(self, path: Path) -> ReplayLog:
+        log = load_replay_log(path)
+        baseline = self.adapter.prepare_replay(log.initial_pcb_path)
+        if log.changes and self._all_changes_already_applied(baseline, log.changes):
+            raise ReplayError(
+                "KiCad did not reach the saved initial PCB state; the board still looks "
+                "fully replayed. Close other active tools, reload the PCB, and try again."
+            )
+        self.log = log
+        self.baseline = baseline
+        self._position_snapshots = [baseline]
+        self.position = 0
+        self.playing = False
+        self._next_step_at = None
+        return log
+
+    @staticmethod
+    def _all_changes_already_applied(
+        snapshot: BoardSnapshot,
+        changes: tuple[dict[str, Any], ...],
+    ) -> bool:
+        comparable = 0
+        applied = 0
+        for change in changes:
+            item_uuid = change["item_uuid"]
+            operation = change["operation"]
+            state = snapshot.items.get(item_uuid)
+            if operation == "footprint.move" and state is not None:
+                comparable += 1
+                if (
+                    state.data.get("position") == change.get("position")
+                    and state.data.get("orientation") == change.get("orientation")
+                ):
+                    applied += 1
+            elif operation.endswith(".add"):
+                comparable += 1
+                applied += int(state is not None)
+            elif operation.endswith(".remove"):
+                comparable += 1
+                applied += int(state is None)
+        return comparable > 0 and applied == comparable
+
+    def set_speed(self, speed: float) -> None:
+        if speed <= 0:
+            raise ValueError("Playback speed must be greater than zero.")
+        self.speed = speed
+        if self.playing:
+            self._next_step_at = time.monotonic() + self.step_seconds / speed
+
+    def play(self, now: float | None = None) -> None:
+        self._require_loaded()
+        if self.position >= self.total:
+            self.seek(0)
+        self.playing = True
+        clock = time.monotonic() if now is None else now
+        self._next_step_at = clock
+
+    def pause(self) -> None:
+        self.playing = False
+        self._next_step_at = None
+
+    def toggle(self, now: float | None = None) -> None:
+        if self.playing:
+            self.pause()
+        else:
+            self.play(now)
+
+    def tick(self, now: float | None = None) -> bool:
+        if not self.playing:
+            return False
+        clock = time.monotonic() if now is None else now
+        if self._next_step_at is not None and clock < self._next_step_at:
+            return False
+        try:
+            changed = self.step_forward()
+        except Exception:
+            self.pause()
+            raise
+        if not changed or self.position >= self.total:
+            self.pause()
+        else:
+            self._next_step_at = clock + self.step_seconds / self.speed
+        return changed
+
+    def step_forward(self) -> bool:
+        log = self._require_loaded()
+        if self.position >= len(log.steps):
+            return False
+        start_snapshot = self._position_snapshots[self.position]
+        try:
+            next_snapshot = self.adapter.apply_step(
+                log.steps[self.position],
+                f"KiLog replay: step {self.position + 1}",
+            )
+        except Exception:
+            self.adapter.restore_snapshot(
+                start_snapshot,
+                f"KiLog: recover replay step {self.position}",
+            )
+            raise
+        self.position += 1
+        del self._position_snapshots[self.position :]
+        self._position_snapshots.append(next_snapshot)
+        return True
+
+    def step_back(self) -> bool:
+        if self.position <= 0:
+            return False
+        self.seek(self.position - 1)
+        return True
+
+    def seek(self, position: int) -> None:
+        log = self._require_loaded()
+        target = max(0, min(int(position), len(log.steps)))
+        if target == self.position:
+            return
+        was_playing = self.playing
+        self.pause()
+
+        if target < self.position:
+            target_snapshot = self._position_snapshots[target]
+            self.adapter.restore_snapshot(
+                target_snapshot,
+                f"KiLog: replay back to step {target}",
+            )
+            self.position = target
+        else:
+            start_position = self.position
+            start_snapshot = self._position_snapshots[start_position]
+            try:
+                while self.position < target:
+                    self.step_forward()
+            except Exception:
+                self.adapter.restore_snapshot(
+                    start_snapshot,
+                    f"KiLog: recover replay step {start_position}",
+                )
+                self.position = start_position
+                del self._position_snapshots[start_position + 1 :]
+                raise
+
+        if was_playing and target < self.total:
+            self.play()
+
+    def skip(self, amount: int) -> None:
+        self.seek(self.position + amount)
+
+    def branch(self) -> ReplayBranch:
+        """Return the current replay prefix as a resumable recording branch."""
+        log = self._require_loaded()
+        self.pause()
+        return ReplayBranch(
+            path=log.path,
+            initial_pcb_path=log.initial_pcb_path,
+            steps=log.source_steps[: self.position],
+            snapshots=tuple(self._position_snapshots[: self.position + 1]),
+        )
+
+    def note(self) -> Path:
+        """Save the current replay state using its actual position in the log."""
+        log = self._require_loaded()
+        stem = log.path.stem
+        if stem.lower().endswith("_log"):
+            stem = stem[:-4]
+        path = snapshot_path(log.path.parent, stem, self.position)
+        if path.exists():
+            raise ReplayError(
+                f"Replay position {self.position} is already marked as {path.name}."
+            )
+        self.adapter.save_copy(path)
+        return path
+
+    def _require_loaded(self) -> ReplayLog:
+        if self.log is None or self.baseline is None:
+            raise ReplayError("Choose a KiLog JSON file first.")
+        return self.log

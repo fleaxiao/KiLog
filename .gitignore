@@ -1,0 +1,46 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.uv-cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Python packaging artifacts
+*.egg-info/
+build/
+dist/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Temporary board exports and recordings (keep test fixtures trackable)
+/*.kicad_pcb
+/*.kicad_pro
+/*.kicad_prl
+/ref*.json
+*.lck
+*.log
+*.tmp
+*.bak
+*.kicad_pcb-bak
+*-backups/

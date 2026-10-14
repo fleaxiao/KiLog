@@ -1,4 +1,4 @@
-"""Shared natural reference ordering for Select and exported filenames."""
+"""Natural reference ordering for the Trace component grid."""
 import re
 
 

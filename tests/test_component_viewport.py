@@ -17,6 +17,7 @@ def viewport(count, width=400, height=68):
     view._wheel_rotation = 0
     view.FromDIP = lambda value: value
     view.GetClientSize = lambda: (width, height)
+    view.GetCharHeight = lambda: 12
     view.Refresh = lambda *args: None
 
     class Button:
@@ -98,3 +99,24 @@ def test_different_prefixes_flow_in_same_row_without_category_gaps():
     view._scroll_to(99)
     assert view.first_row == 0
     assert all(b.visible for b in view.buttons)
+
+
+def test_short_viewport_keeps_readable_rows_and_can_reach_every_component():
+    for height, rows in ((20, 1), (44, 2), (68, 3)):
+        view = viewport(50, height=height)
+        view.layout_buttons()
+        assert sum(b.visible for b in view.buttons) == rows * 7
+        assert all(b.bounds[3] >= 20 for b in view.buttons if b.visible)
+        view._scroll_to(999)
+        assert view.buttons[-1].visible
+        assert all(b.bounds[1] + b.bounds[3] <= height for b in view.buttons if b.visible)
+        _x, top, thumb_height, _travel = view._geometry()
+        assert top + thumb_height == height - 2
+
+
+def test_larger_font_reduces_visible_rows_instead_of_clipping_text():
+    view = viewport(50, height=68)
+    view.GetCharHeight = lambda: 22
+    view.layout_buttons()
+    assert sum(b.visible for b in view.buttons) == 14
+    assert all(b.bounds[3] >= 26 for b in view.buttons if b.visible)

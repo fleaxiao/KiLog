@@ -96,6 +96,7 @@ class UnderlinedPathDisplay(wx.Panel):
         size: tuple[int, int],
         font: wx.Font,
         button_handler=None,
+        button_label: str = "Load",
     ):
         super().__init__(parent, size=size, style=wx.BORDER_NONE)
         self.SetMinSize(size)
@@ -109,7 +110,7 @@ class UnderlinedPathDisplay(wx.Panel):
         if button_handler is not None:
             self.button = wx.Button(
                 self,
-                label="Load",
+                label=button_label,
                 size=(80, 30),
                 style=wx.BORDER_NONE,
             )
@@ -363,7 +364,7 @@ class ReplaySlider(wx.Panel):
 
 
 class ComponentViewport(wx.Panel):
-    """Ungrouped reference buttons in seven columns and three visible rows."""
+    """Seven reference columns with up to three rows fitting the available height."""
 
     COLUMNS = 7
     VISIBLE_ROWS = 3
@@ -394,8 +395,14 @@ class ComponentViewport(wx.Panel):
         self.buttons.append(button)
         button.Bind(wx.EVT_MOUSEWHEEL, self._on_wheel)
 
+    def _visible_rows(self):
+        gap = self.FromDIP(4)
+        row_height = max(self.FromDIP(20), self.GetCharHeight() + self.FromDIP(4))
+        _width, height = self.GetClientSize()
+        return max(1, min(self.VISIBLE_ROWS, (height + gap) // (row_height + gap)))
+
     def _max_row(self):
-        return max(0, (len(self.buttons) + self.COLUMNS - 1) // self.COLUMNS - self.VISIBLE_ROWS)
+        return max(0, (len(self.buttons) + self.COLUMNS - 1) // self.COLUMNS - self._visible_rows())
 
     def _scroll_to(self, row):
         self.first_row = max(0, min(self._max_row(), int(row)))
@@ -406,12 +413,13 @@ class ComponentViewport(wx.Panel):
         width, height = self.GetClientSize()
         gap = self.FromDIP(4)
         content_width = max(1, width - self.FromDIP(16))
-        button_height = max(1, (height - gap * (self.VISIBLE_ROWS - 1)) // self.VISIBLE_ROWS)
+        visible_rows = self._visible_rows()
+        button_height = max(1, (height - gap * (visible_rows - 1)) // visible_rows)
         columns = self.COLUMNS
         available = max(columns, content_width - gap * (columns - 1))
         positions = {}
         start = self.first_row * columns
-        for index in range(start, min(len(self.buttons), start + self.VISIBLE_ROWS * columns)):
+        for index in range(start, min(len(self.buttons), start + visible_rows * columns)):
             visible_row, column = divmod(index - start, columns)
             left = column * available // columns + column * gap
             right = (column + 1) * available // columns + column * gap
@@ -430,7 +438,7 @@ class ComponentViewport(wx.Panel):
         width, height = self.GetClientSize()
         track_height = max(1, height - self.FromDIP(4))
         thumb_height = min(track_height, max(self.FromDIP(12),
-            track_height * self.VISIBLE_ROWS / (self._max_row() + self.VISIBLE_ROWS)))
+            track_height * self._visible_rows() / (self._max_row() + self._visible_rows())))
         travel = track_height - thumb_height
         top = self.FromDIP(2) + travel * self.first_row / max(1, self._max_row())
         return width - self.FromDIP(7), top, thumb_height, travel
@@ -485,8 +493,8 @@ class ComponentViewport(wx.Panel):
     def _on_key(self, event):
         targets = {
             wx.WXK_UP: self.first_row - 1, wx.WXK_DOWN: self.first_row + 1,
-            wx.WXK_PAGEUP: self.first_row - self.VISIBLE_ROWS,
-            wx.WXK_PAGEDOWN: self.first_row + self.VISIBLE_ROWS,
+            wx.WXK_PAGEUP: self.first_row - self._visible_rows(),
+            wx.WXK_PAGEDOWN: self.first_row + self._visible_rows(),
             wx.WXK_HOME: 0, wx.WXK_END: self._max_row(),
         }
         if event.GetKeyCode() in targets:
@@ -801,7 +809,7 @@ class KiLogWindow(wx.Frame):
         tab_bar = wx.BoxSizer(wx.HORIZONTAL)
         self.record_tab_button = self._mode_tab(root, "Record", 0)
         self.replay_tab_button = self._mode_tab(root, "Replay", 1)
-        self.select_tab_button = self._mode_tab(root, "Select", 2)
+        self.select_tab_button = self._mode_tab(root, "Trace", 2)
         self.skill_tab_button = self._mode_tab(root, "Skill", 3)
         tab_bar.Add(self.record_tab_button, 0, wx.RIGHT, 3)
         tab_bar.Add(self.replay_tab_button, 0, wx.RIGHT, 3)
@@ -1394,7 +1402,7 @@ class KiLogWindow(wx.Frame):
 
     def _sync_select_to_board(self, selected: set[str]) -> None:
         if self.select_board_path != self.recorder.adapter.board_path:
-            raise ValueError("The active PCB changed. Reopen the Select tab to update components.")
+            raise ValueError("The active PCB changed. Reopen the Trace tab to update components.")
         actual = self.recorder.adapter.select_components(selected)
         for uuid, button in self.select_buttons.items():
             button.SetValue(uuid in actual)
@@ -1405,9 +1413,10 @@ class KiLogWindow(wx.Frame):
             self.replay.pause()
             self._sync_replay_controls()
             if self.select_board_path != self.recorder.adapter.board_path:
-                raise ValueError("The active PCB changed. Reopen the Select tab to update components.")
+                raise ValueError("The active PCB changed. Reopen the Trace tab to update components.")
             self._sync_select_from_board()
-            path = export_selection(self.recorder.adapter, self._selected_component_ids() | self.select_locked_ids)
+            path = export_selection(self.recorder.adapter,
+                                    self._selected_component_ids() | self.select_locked_ids)
             self.select_note_button.SetToolTip(f"Saved: {path}")
         self._run_action(action)
 

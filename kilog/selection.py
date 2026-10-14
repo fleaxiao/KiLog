@@ -7,7 +7,7 @@ import re
 import tempfile
 
 from .selection_routing import routing_replacements
-from .component_layout import reference_sort_key
+from .trace_output import trace_directory, write_trace
 
 
 @dataclass
@@ -53,10 +53,11 @@ def parse_board(text: str) -> Node:
 
 
 def filter_board(text: str, selected: set[str]) -> str:
-    """Keep selected UUIDs and physical routes between selected footprints.
+    """Keep selected UUIDs and direct physical routes between selected footprints.
 
     Copper zones (including cached fills) are removed. Rule-area keepouts,
-    board settings, outlines and board-level annotations remain intact.
+    board settings, outlines and board-level annotations remain intact. A path
+    between two footprints cannot pass through a third footprint's copper pad.
     """
     board = parse_board(text)
     footprints = board.children("footprint")
@@ -115,47 +116,12 @@ def filter_board(text: str, selected: set[str]) -> str:
     return text
 
 
-def selection_output_stem(board_stem: str, filtered_board: str) -> str:
-    """Name the copy using only unlocked references from the exported snapshot."""
-    references = []
-    for footprint in parse_board(filtered_board).children("footprint"):
-        if "locked" in footprint.values or footprint.field("locked") in {"yes", "true"}:
-            continue
-        reference = next((node.values[2] for node in footprint.children("property")
-                          if len(node.values) > 2 and node.values[1] == "Reference"), "")
-        if not reference:
-            reference = next((node.values[2] for node in footprint.children("fp_text")
-                              if len(node.values) > 2 and node.values[1] == "reference"), "")
-        if not reference or re.search(r'[<>:"/\\|?*\x00-\x1f]', reference) or reference.endswith((" ", ".")):
-            raise ValueError("A selected reference is empty or contains invalid filename characters. Rename it in KiCad first.")
-        references.append(reference)
-    ordered = sorted(references, key=reference_sort_key)
-    return "_".join([board_stem, *ordered]) if ordered else f"{board_stem}_select"
-
-
-def export_selection(adapter, selected: set[str]) -> Path:
-    directory = Path(adapter.output_directory)
+def export_selection(adapter, selected: set[str], output_directory: Path | None = None) -> Path:
+    directory = trace_directory(adapter.output_directory if output_directory is None else output_directory)
     stem = adapter.board_path.stem if adapter.board_path else "board"
-    # Filter privately, then replace the destination with a complete sibling
-    # file. Failed filtering/writing must leave the previous export intact.
-    with tempfile.TemporaryDirectory(prefix="kilog-select-") as temporary:
+    # Filter only the IPC-saved live snapshot, then publish a numbered copy.
+    with tempfile.TemporaryDirectory(prefix="kilog-trace-") as temporary:
         source = Path(temporary) / "source.kicad_pcb"
         adapter.save_copy(source)
         result = filter_board(source.read_text(encoding="utf-8"), selected)
-        stem = selection_output_stem(stem, result)
-    filename = f"{stem}.kicad_pcb"
-    if len(filename.encode("utf-16-le")) // 2 > 255:
-        raise ValueError("Selected references make the output filename too long. Select fewer components or shorten their references.")
-    output = directory / filename
-    pending = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
-                                         dir=directory, prefix=".kilog-select-", suffix=".tmp",
-                                         delete=False) as stream:
-            pending = Path(stream.name)
-            stream.write(result)
-        pending.replace(output)
-    finally:
-        if pending is not None:
-            pending.unlink(missing_ok=True)
-    return output
+    return write_trace(directory, stem, result)

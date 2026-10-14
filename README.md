@@ -29,14 +29,18 @@ plugins or restart PCB Editor. Open a board before launching KiLog.
 - **Replay** — Load a KiLog JSON file, seek or play at `0.25×`–`4×` speed, and
   mark PCB copies. Continue recording resumes at the current step and discards
   later steps. Playback edits are undoable and are not saved automatically.
-- **Select** — Toggle component references or select footprints in KiCad;
+- **Trace** — Toggle component references or select footprints in KiCad;
   selection stays synchronized. Mark exports the current selected footprints and
-  copper paths between them, including unsaved edits, while removing other
+  direct copper paths between them, including unsaved edits, while removing other
   footprints and ordinary copper zones. Locked footprints are hidden but always
   included. The current board and recording history stay unchanged.
-  Exports go beside the board as `<board>_<reference1>_<reference2>.kicad_pcb`,
-  using naturally sorted unlocked references, or `<board>_select.kicad_pcb` for
-  locked-only exports. **Existing exports with the same name are replaced.**
+  A path through a third footprint's copper pad is not a direct connection,
+  even when the trace is continuous. For A–C–B, selecting only A and B removes
+  that path; selecting C too can retain the direct A–C and C–B connections.
+  Exports go to the current board directory. Mark saves `<board>_001.kicad_pcb`,
+  `<board>_002.kicad_pcb`, and so on, continuing after the largest existing number
+  for that board in its directory. Existing files are kept; failed exports
+  do not consume a number. Locked-only exports use the same numbering.
 - **Skill** — GNDfill creates and fills zones on `F.Cu`, `B.Cu`, or both, with
   separate ground regions and magnetic-body keepouts. Review the resulting copper.
   Fanout routes matching SMD pads to through vias using the entered net, fallback
@@ -61,5 +65,6 @@ python -m venv .venv
 ```
 
 See [AGENTS.md](AGENTS.md) for project development rules,
+[DESIGN.md](DESIGN.md) for UI style and interaction conventions,
 [the log schema](kilog/schemas/operation-log-v1.schema.json) for the JSON format,
 and [CHANGELOG.md](CHANGELOG.md) for release history.

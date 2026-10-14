@@ -233,7 +233,7 @@ class KiCadBoardAdapter:
             if not item.locked
         }
         if not selected <= footprints.keys():
-            raise ValueError("Selected components changed. Reopen the Select tab to update components.")
+            raise ValueError("Selected components changed. Reopen the Trace tab to update components.")
         current = {
             item.proto.id.value: item
             for item in self.board.get_selection(types=[KiCadObjectType.KOT_PCB_FOOTPRINT])
@@ -256,7 +256,7 @@ class KiCadBoardAdapter:
         }
 
     def locked_component_ids(self) -> set[str]:
-        """Hidden footprints that Select always retains in an export."""
+        """Hidden footprints that Trace always retains in an export."""
         return {
             item.proto.id.value
             for item in self.board.get_items(types=[KiCadObjectType.KOT_PCB_FOOTPRINT])

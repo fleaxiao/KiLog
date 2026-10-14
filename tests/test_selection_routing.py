@@ -136,3 +136,109 @@ def test_locked_default_connects_to_visible_selected_component():
     source = board(locked, footprint("b", 10, 0), footprint("c", 5, 5),
                    track("connection", (0, 0), (10, 0)), track("branch", (5, 0), (5, 5)))
     assert set(routing(filter_board(source, {"b"}))) == {"connection"}
+
+
+@pytest.mark.parametrize("split", [False, True])
+@pytest.mark.parametrize("pad_net", ["1", "2", "0"])
+def test_continuous_copper_through_unselected_pad_is_not_direct(split, pad_net):
+    tracks = ([track("left", (0, 0), (5, 0)), track("right", (5, 0), (10, 0))]
+              if split else [track("whole", (0, 0), (10, 0))])
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0),
+                   footprint("other", 5, 0, net=pad_net), *tracks)
+    assert not routing(filter_board(source, {"a", "b"}))
+
+
+@pytest.mark.parametrize("height, retained", [(0.34, False), (0.35, False), (0.36, True)])
+def test_pad_passage_includes_trace_width_and_boundary_contact(height, retained):
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0), footprint("other", 5, height),
+                   track("whole", (0, 0), (10, 0)))
+    assert bool(routing(filter_board(source, {"a", "b"}))) is retained
+
+
+def test_pad_on_other_copper_layer_does_not_block_direct_trace():
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0),
+                   footprint("other", 5, 0, layer="B.Cu"), track("whole", (0, 0), (10, 0)))
+    assert set(routing(filter_board(source, {"a", "b"}))) == {"whole"}
+
+
+def test_arc_passing_through_third_pad_is_not_direct():
+    arc = '(arc (uuid "curve") (start 0 0) (mid 5 5) (end 10 0) (width 0.1) (layer "F.Cu") (net 1))'
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0), footprint("other", 5, 5), arc)
+    assert not routing(filter_board(source, {"a", "b"}))
+
+
+def test_retain_direct_parallel_path_but_remove_path_through_other_pad():
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0), footprint("other", 5, 0),
+                   track("through-pad", (0, 0), (10, 0)), track("up", (0, 0), (0, 3)),
+                   track("across", (0, 3), (10, 3)), track("down", (10, 3), (10, 0)))
+    assert set(routing(filter_board(source, {"a", "b"}))) == {"up", "across", "down"}
+
+
+def test_selected_intermediate_component_forms_two_direct_pairs():
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0), footprint("middle", 5, 0),
+                   track("left", (0, 0), (5, 0)), track("right", (5, 0), (10, 0)))
+    assert set(routing(filter_board(source, {"a", "b", "middle"}))) == {"left", "right"}
+
+
+def test_third_selected_footprint_on_another_net_still_blocks_passage():
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0),
+                   footprint("other", 5, 0, net="2"), track("whole", (0, 0), (10, 0)))
+    assert not routing(filter_board(source, {"a", "b", "other"}))
+
+
+def test_direct_prefix_is_clipped_before_branch_reaches_unselected_pad():
+    source = board(footprint("a", 0, 0), footprint("b", 4, 3), footprint("other", 5, 0),
+                   track("trunk", (0, 0), (10, 0)), track("branch", (4, 0), (4, 3)))
+    kept = routing(filter_board(source, {"a", "b"}))
+    assert set(kept) == {"trunk", "branch"}
+    assert [float(v) for v in kept["trunk"].children("end")[0].values[1:]] == [4, 0]
+
+
+@pytest.mark.parametrize("pad_layer, via_layers, end_layer, expected", [
+    ("In1.Cu", '"F.Cu" "B.Cu"', "B.Cu", set()),
+    ("B.Cu", '"F.Cu" "In1.Cu"', "In1.Cu", {"front", "back", "via"}),
+])
+def test_via_touching_third_pad_is_blocked_only_inside_its_layer_span(pad_layer, via_layers, end_layer, expected):
+    via = f'(via (uuid "via") (at 5 0) (size 0.5) (drill 0.3) (layers {via_layers}) (net 1))'
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0, layer=end_layer),
+                   footprint("other", 5, 0, layer=pad_layer), via,
+                   track("front", (0, 0), (5, 0)), track("back", (5, 0), (10, 0), layer=end_layer))
+    assert set(routing(filter_board(source, {"a", "b"}))) == expected
+
+
+def test_third_custom_pad_copper_outside_anchor_blocks_path():
+    custom = footprint("other", 5, 2, shape="custom").replace('(net 1)', '''(net 1)
+        (options (anchor rect))
+        (primitives (gr_poly (pts (xy -0.3 0) (xy 0.3 0) (xy 0.3 -2.3) (xy -0.3 -2.3))
+          (width 0) (fill yes)))''')
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0), custom,
+                   track("whole", (0, 0), (10, 0)))
+    assert not routing(filter_board(source, {"a", "b"}))
+
+
+def test_round_pad_bounding_box_alone_does_not_block_path():
+    # The centerline crosses a corner of the pad's bounding box, outside copper.
+    source = board(footprint("a", 4, 5.45), footprint("b", 6, 3.45),
+                   footprint("other", 5, 5, shape="circle"),
+                   track("diagonal", (4, 5.45), (6, 3.45)))
+    assert set(routing(filter_board(source, {"a", "b"}))) == {"diagonal"}
+
+
+def test_unsupported_unselected_pad_fails_without_writing_or_consuming_number(tmp_path):
+    from types import SimpleNamespace
+    from kilog.selection import export_selection
+
+    source = board(footprint("a", 0, 0), footprint("b", 10, 0),
+                   footprint("other", 5, 0).replace('(net 1)', '(net 1) (padstack custom)'),
+                   track("whole", (0, 0), (10, 0)))
+    original = tmp_path / "board.kicad_pcb"
+    original.write_text("original disk board")
+    previous = tmp_path / "board_001.kicad_pcb"
+    previous.write_text("previous export")
+    adapter = SimpleNamespace(board_path=original, output_directory=tmp_path,
+                              save_copy=lambda path: path.write_text(source, encoding="utf-8"))
+    with pytest.raises(ValueError, match="padstacks"):
+        export_selection(adapter, {"a", "b"})
+    assert original.read_text() == "original disk board"
+    assert previous.read_text() == "previous export"
+    assert set(tmp_path.iterdir()) == {original, previous}

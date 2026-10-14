@@ -72,7 +72,8 @@ def handlers():
     path = Path(__file__).parents[1] / "kilog" / "ui.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names = {"_selected_component_ids", "_on_select_check", "_sync_select_to_board", "_set_select_all",
-             "_sync_select_from_board", "_sync_select_selection", "_poll_select"}
+             "_sync_select_from_board", "_sync_select_selection", "_poll_select",
+             "_on_select_note"}
     methods = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name in names]
     namespace = {"BG": "bg", "DIM": "dim", "PANEL": "panel", "ORANGE": "orange"}
     exec(compile(ast.Module(body=methods, type_ignores=[]), str(path), "exec"), namespace)
@@ -246,3 +247,30 @@ def test_ui_uses_actual_selection_and_blocks_changed_board():
     with pytest.raises(ValueError, match="active PCB changed"):
         view._set_select_all(False)
     assert view._selected_component_ids() == {"a"}
+
+
+def test_trace_mark_refreshes_live_selection_and_uses_board_directory(tmp_path, monkeypatch):
+    view = frame(lambda ids: ids)
+    view.recorder.adapter.output_directory = tmp_path
+    view.replay = SimpleNamespace(pause=lambda: None)
+    view._sync_replay_controls = lambda: None
+    adapter = view.recorder.adapter
+    adapter.selection_components = lambda: view.select_components
+    adapter.selected_component_ids = lambda: {"b"}
+    adapter.locked_component_ids = lambda: {"locked"}
+    tooltips = []
+    view.select_note_button.SetToolTip = tooltips.append
+    calls = []
+    def export(adapter, selected):
+        calls.append((adapter, selected))
+        return adapter.output_directory / "board_001.kicad_pcb"
+    monkeypatch.setitem(view._on_select_note.__func__.__globals__, "export_selection", export)
+    view._on_select_note(None)
+    assert calls == [(adapter, {"b", "locked"})]
+    assert tooltips == [f"Saved: {tmp_path / 'board_001.kicad_pcb'}"]
+    def fail(*args):
+        raise OSError("disk full")
+    monkeypatch.setitem(view._on_select_note.__func__.__globals__, "export_selection", fail)
+    with pytest.raises(OSError, match="disk full"):
+        view._on_select_note(None)
+    assert len(tooltips) == 1

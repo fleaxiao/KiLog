@@ -1,17 +1,19 @@
-"""Retain copper paths between selected footprints, not entire net membership.
+"""Retain direct copper paths between selected footprints.
 
 Geometry is in PCB-file millimetres. Junctions split traces before a block-cut
-forest removes branches that cannot lie between two selected footprints.
+forest removes branches that cannot lie between two selected footprints. Each
+endpoint pair excludes copper touching pads belonging to any third footprint.
 """
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from itertools import combinations
 import math
 from uuid import uuid4
 
 from shapely import STRtree
 from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
-from shapely.ops import nearest_points, unary_union
+from shapely.ops import nearest_points, substring, unary_union
 
 
 TOLERANCE = 0.000002  # 2 nm: rounding only, never bridge a clearance gap.
@@ -143,7 +145,7 @@ def pad_shape(footprint, pad):
                 parts.append(part.buffer(thickness / 2) if thickness else part)
         shape = unary_union(parts)
     else:
-        raise ValueError(f"Select routing does not yet support {shape_name} pads; no file was saved.")
+        raise ValueError(f"Trace routing does not yet support {shape_name} pads; no file was saved.")
     if pad.children("chamfer"):
         cut = min(width, height) * float(pad.field("chamfer_ratio", "0"))
         corners = {"top_left": (-1, -1), "top_right": (1, -1),
@@ -153,7 +155,7 @@ def pad_shape(footprint, pad):
             x, y = sx * width / 2, sy * height / 2
             shape = shape.difference(Polygon([(x, y), (x - sx * cut, y), (x, y - sy * cut)]))
     if pad.children("padstack"):
-        raise ValueError("Select routing does not yet support per-layer custom padstacks; no file was saved.")
+        raise ValueError("Trace routing does not yet support per-layer custom padstacks; no file was saved.")
     pose = values(pad, "at")
     # Pad orientation in a PCB file is absolute; its position is footprint-local.
     rotation = float(pose[2]) if len(pose) > 2 else 0
@@ -246,6 +248,25 @@ def connecting_edges(edges, terminals):
     return retained
 
 
+def direct_connecting_edges(edges, terminals, pad_contacts):
+    """Keep paths for each endpoint pair only when no third footprint is touched.
+
+    Pads on any net are barriers to that pair, including unselected footprints.
+    A selected intermediate footprint may instead be an endpoint of another
+    direct pair; the result is the union of those independently valid paths.
+    """
+    owners = set().union(*terminals.values()) if terminals else set()
+    retained = set()
+    for pair in combinations(sorted(owners), 2):
+        allowed = set(pair)
+        indices = [i for i, touched in enumerate(pad_contacts) if touched <= allowed]
+        pair_terminals = {vertex: labels & allowed for vertex, labels in terminals.items()
+                          if labels & allowed}
+        retained.update(indices[i] for i in connecting_edges(
+            [edges[i] for i in indices], pair_terminals))
+    return retained
+
+
 def routing_replacements(board, text, selected):
     """Map each routing node's source offset to retained (possibly split) text."""
     routes = [n for n in board.values if hasattr(n, "kind") and n.kind in {"segment", "arc", "via"}]
@@ -272,12 +293,26 @@ def routing_replacements(board, text, selected):
             return set(copper[a:b + 1])
         return set(names) & set(copper)
 
+    pad_copper = None
     for net, pads in pads_by_net.items():
         if len({fp.field("uuid") for fp, _pad in pads}) < 2:
             continue
         tracks = [route_geometry(n) for n in routes if n.field("net") == net and n.kind != "via"]
         if not tracks:
             continue
+        if pad_copper is None:
+            # Read every copper pad from the live snapshot before unselected
+            # footprints are removed. Net 0 and other nets still block passage.
+            pad_copper = [(pad_shape(fp, pad), layers(pad), fp.field("uuid"))
+                          for fp in board.children("footprint") for pad in fp.children("pad")
+                          if pad.values[2] != "np_thru_hole" and layers(pad)]
+            pad_tree = STRtree([shape for shape, _layers, _owner in pad_copper])
+
+        def touched_pads(shape, copper_layers, radius=0):
+            return {pad_copper[int(j)][2] for j in pad_tree.query(
+                shape, predicate="dwithin", distance=radius + TOLERANCE)
+                if copper_layers & pad_copper[int(j)][1]}
+
         anchors = []
         for fp, pad in pads:
             if pad.values[2] == "np_thru_hole":
@@ -348,7 +383,27 @@ def routing_replacements(board, text, selected):
             for a, b in zip(cuts, cuts[1:]):
                 edges.append((vertex((i, a)), vertex((i, b)), (i, a, b)))
         edges.extend(links)
-        keep = connecting_edges(edges, terminals)
+        vertex_contacts = {}
+        for key, identity in identities.items():
+            if key[0] == "anchor":
+                shape, copper_layers, _owner, _via = anchors[key[1]]
+                vertex_contacts[identity] = touched_pads(shape, copper_layers)
+            elif isinstance(key[0], int):
+                i, fraction = key
+                vertex_contacts[identity] = touched_pads(
+                    tracks[i].line.interpolate(fraction, normalized=True),
+                    {tracks[i].node.field("layer")}, widths[i])
+        pad_contacts = []
+        for a, b, owner in edges:
+            touched = vertex_contacts.get(a, set()) | vertex_contacts.get(b, set())
+            if isinstance(owner, tuple):
+                i, start, end = owner
+                # Check the whole copper span, not just junction coordinates:
+                # one uninterrupted segment/arc can pass through another pad.
+                shape = substring(tracks[i].line, start, end, normalized=True)
+                touched |= touched_pads(shape, {tracks[i].node.field("layer")}, widths[i])
+            pad_contacts.append(touched)
+        keep = direct_connecting_edges(edges, terminals, pad_contacts)
         intervals = defaultdict(list)
         for index in keep:
             owner = edges[index][2]

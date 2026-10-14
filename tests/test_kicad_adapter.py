@@ -48,9 +48,8 @@ def test_selection_components_are_naturally_sorted_and_identified_by_uuid():
     (["R02", "r2", "R1"], ["R1", "R02", "r2"]),
     (["_R1", "10", "2", "C1"], ["2", "10", "_R1", "C1"]),
 ])
-def test_select_display_and_export_share_reference_order(references, expected):
+def test_trace_display_uses_natural_reference_order(references, expected):
     from types import SimpleNamespace
-    from kilog.selection import selection_output_stem
 
     footprints = []
     for index, reference in enumerate(references):
@@ -60,11 +59,6 @@ def test_select_display_and_export_share_reference_order(references, expected):
         footprints.append(footprint)
     adapter = KiCadBoardAdapter(None, SimpleNamespace(get_items=lambda **kwargs: footprints))
     assert [reference for _, reference in adapter.selection_components()] == expected
-    source = '(kicad_pcb ' + ' '.join(
-        f'(footprint "part" (property "Reference" "{reference}"))'
-        for reference in references
-    ) + ')'
-    assert selection_output_stem("board", source) == "board_" + "_".join(expected)
 
 
 def test_fanout_uses_explicit_gap_for_trace_and_via():

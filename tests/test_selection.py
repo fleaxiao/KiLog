@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from kilog.selection import export_selection, filter_board, parse_board, selection_output_stem
+from kilog.selection import export_selection, filter_board, parse_board
 
 
 BOARD = '''(kicad_pcb (version 20241229)
@@ -65,60 +65,55 @@ class SelectionTests(unittest.TestCase):
         self.assertNotIn('(segment', result)
         self.assertNotIn('(via', result)
 
-    def test_export_overwrites_same_name_but_preserves_source(self):
+    def test_export_continues_numbering_and_preserves_source_and_previous_export(self):
         with TemporaryDirectory() as tmp:
             directory = Path(tmp)
             original = directory / "board.kicad_pcb"
             original.write_text("original on disk", encoding="utf-8")
-            existing = directory / "board_U1.kicad_pcb"
+            existing = directory / "board_001.kicad_pcb"
             existing.write_text("previous mark", encoding="utf-8")
             adapter = SimpleNamespace(
                 board_path=original, output_directory=directory,
                 save_copy=lambda path: path.write_text(BOARD, encoding="utf-8"),
             )
             output = export_selection(adapter, {"a"})
-            self.assertEqual(output.name, "board_U1.kicad_pcb")
+            self.assertEqual(output.name, "board_002.kicad_pcb")
             self.assertEqual(original.read_text(), "original on disk")
-            self.assertEqual(existing.read_text(encoding="utf-8"), filter_board(BOARD, {"a"}))
+            self.assertEqual(existing.read_text(encoding="utf-8"), "previous mark")
             self.assertEqual(output.read_text(encoding="utf-8"), filter_board(BOARD, {"a"}))
             with self.assertRaises(ValueError):
                 export_selection(adapter, {"missing"})
-            self.assertEqual(len(list(directory.glob("*.kicad_pcb"))), 2)
+            self.assertEqual(len(list(directory.glob("*.kicad_pcb"))), 3)
+            self.assertEqual(export_selection(adapter, {"a"}).name, "board_003.kicad_pcb")
 
-    def test_failed_replace_preserves_existing_export_and_cleans_temp(self):
+    def test_failed_publish_preserves_existing_export_and_cleans_temp(self):
         with TemporaryDirectory() as tmp:
             directory = Path(tmp)
-            existing = directory / "board_U1.kicad_pcb"
+            existing = directory / "board_001.kicad_pcb"
             existing.write_text("previous mark", encoding="utf-8")
             adapter = SimpleNamespace(
                 board_path=directory / "board.kicad_pcb", output_directory=directory,
                 save_copy=lambda path: path.write_text(BOARD, encoding="utf-8"),
             )
-            with patch.object(Path, "replace", side_effect=PermissionError("file busy")):
+            with patch("kilog.trace_output._publish_new", side_effect=PermissionError("file busy")):
                 with self.assertRaises(PermissionError):
                     export_selection(adapter, {"a"})
             self.assertEqual(existing.read_text(), "previous mark")
             self.assertEqual(list(directory.iterdir()), [existing])
 
-    def test_filename_uses_exported_references_in_natural_order(self):
-        source = '(kicad_pcb ' + ' '.join(
-            f'(footprint "part" (property "Reference" "{ref}"))'
-            for ref in ["U1", "R10", "C2", "R2"]
-        ) + ')'
-        self.assertEqual(selection_output_stem("original", source), "original_C2_R2_R10_U1")
-
-    def test_first_export_has_no_counter_suffix(self):
+    def test_first_export_starts_at_one_in_chosen_directory(self):
         with TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "Trace 输出"
+            directory.mkdir()
             adapter = SimpleNamespace(
                 board_path=Path(tmp) / "original.kicad_pcb", output_directory=Path(tmp),
                 save_copy=lambda path: path.write_text(BOARD, encoding="utf-8"),
             )
-            self.assertEqual(export_selection(adapter, {"a"}).name, "original_U1.kicad_pcb")
-
-    def test_invalid_reference_cannot_escape_output_directory(self):
-        for reference in ("../R1", "R:1", "", "R1."):
-            with self.assertRaises(ValueError):
-                selection_output_stem("board", f'(kicad_pcb (footprint "part" (property "Reference" "{reference}")))')
+            output = export_selection(adapter, {"a"}, directory)
+            self.assertEqual(output, directory / "original_001.kicad_pcb")
+            self.assertEqual(list(Path(tmp).iterdir()), [directory])
+            self.assertEqual(adapter.output_directory, Path(tmp))
+            self.assertEqual(output.read_text(encoding="utf-8"), filter_board(BOARD, {"a"}))
 
     def test_locked_components_are_retained_by_default(self):
         for flag in ('locked', '(locked yes)'):
@@ -134,17 +129,8 @@ class SelectionTests(unittest.TestCase):
                 save_copy=lambda path: path.write_text(BOARD.replace('(uuid "a")', '(uuid "a") (locked yes)'), encoding="utf-8"),
             )
             output = export_selection(adapter, set())
-            self.assertEqual(output.name, "board_select.kicad_pcb")
+            self.assertEqual(output.name, "board_001.kicad_pcb")
             self.assertIn('(uuid "a")', output.read_text(encoding="utf-8"))
-
-    def test_filename_omits_locked_references_in_mixed_selection(self):
-        for flag in ('locked', '(locked yes)'):
-            source = f'''(kicad_pcb
-              (footprint "fixed" {flag} (property "Reference" "U1"))
-              (footprint "part" (property "Reference" "R2"))
-              (footprint "part" (property "Reference" "C1")))'''
-            self.assertEqual(selection_output_stem("board", source), "board_C1_R2")
-
 
 if __name__ == "__main__":
     unittest.main()
